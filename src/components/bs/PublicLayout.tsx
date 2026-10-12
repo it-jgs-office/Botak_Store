@@ -10,7 +10,6 @@ const NAV = [
   { to: "/topup", label: "Top Up" },
   { to: "/joki", label: "Joki Rank" },
   { to: "/cek-order", label: "Cek Pesanan" },
-  { to: "/faq", label: "Promo" },
 ] as const;
 
 export function Logo({ animated = true }: { animated?: boolean }) {
@@ -35,9 +34,11 @@ export function dashboardPath(role?: string) {
 export function PublicLayout({
   children,
   banner = "full",
+  footerGap = "default",
 }: {
   children: ReactNode;
   banner?: "full" | "compact" | "none";
+  footerGap?: "default" | "tight";
 }) {
   const { session, user } = useSession();
   const hydrated = useHydrated();
@@ -135,7 +136,7 @@ export function PublicLayout({
       </header>
       {banner !== "none" && <BannerSlider variant={banner} />}
       <main>{children}</main>
-      <footer className="mt-20 border-t border-border bg-[#101419] text-white">
+      <footer className={`${footerGap === "tight" ? "mt-4" : "mt-20"} border-t border-border bg-[#101419] text-white`}>
         <div className="mx-auto grid max-w-7xl gap-8 px-4 py-12 md:grid-cols-4">
           <div className="space-y-3 md:col-span-2">
             <Logo animated={false} />

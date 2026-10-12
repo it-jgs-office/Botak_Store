@@ -185,6 +185,22 @@
   }
 }
 
+@keyframes rank-background-drift {
+  0%,
+  100% {
+    transform: scale(1.02) translate3d(-1.5%, -1%, 0) rotate(-1deg);
+  }
+  50% {
+    transform: scale(1.08) translate3d(2.5%, 2%, 0) rotate(1deg);
+  }
+}
+
+.rank-card-background {
+  animation: rank-background-drift 9s ease-in-out infinite;
+  animation-delay: var(--rank-delay);
+  transform-origin: center;
+}
+
 .rank-card-surface {
   background:
     radial-gradient(
@@ -452,7 +468,8 @@
   .animate-calc-reveal,
   .rank-card-orb,
   .rank-card-sweep,
-  .rank-card-particle {
+  .rank-card-particle,
+  .rank-card-background {
     animation: none;
   }
   .logo-lockup-animated .logo-wordmark {

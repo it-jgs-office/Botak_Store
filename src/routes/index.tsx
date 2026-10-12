@@ -59,6 +59,26 @@ export const FAQS = [
     a: "Estimasi tampil di setiap paket. Pesanan kecil biasanya mulai dikerjakan dalam hitungan menit.",
   },
   {
+    q: "Metode pembayaran apa saja yang tersedia?",
+    a: "Pembayaran dapat dilakukan melalui QRIS, e-wallet, dan virtual account yang tersedia saat checkout.",
+  },
+  {
+    q: "Apakah bisa request hero atau role tertentu?",
+    a: "Bisa. Tulis hero, role, atau gaya bermain yang diinginkan pada catatan pesanan agar diteruskan ke penjoki.",
+  },
+  {
+    q: "Bagaimana cara memantau progres pesanan?",
+    a: "Gunakan halaman Cek Pesanan dengan nomor order kamu. Admin juga akan menghubungi melalui WhatsApp bila ada pembaruan penting.",
+  },
+  {
+    q: "Apakah boleh login ke akun saat pengerjaan berlangsung?",
+    a: "Sebaiknya jangan login saat pengerjaan agar progres tidak terganggu. Kamu akan diberi kabar ketika pesanan sudah selesai atau membutuhkan konfirmasi.",
+  },
+  {
+    q: "Bisakah pesanan dibatalkan?",
+    a: "Pesanan yang belum dikerjakan dapat diajukan pembatalan melalui CS. Pesanan yang sudah berjalan akan ditinjau terlebih dahulu sesuai progresnya.",
+  },
+  {
     q: "Bagaimana jika target tidak tercapai?",
     a: "Hubungi CS dari halaman cek pesanan. Tim kami membantu meninjau progres dan opsi penyelesaiannya.",
   },
@@ -93,7 +113,7 @@ function Home() {
   );
 
   return (
-    <PublicLayout>
+    <PublicLayout footerGap="tight">
       <main className="mx-auto w-full max-w-7xl px-4">
         <section
           aria-label="Pilihan layanan Mobile Legends"
@@ -117,7 +137,7 @@ function Home() {
           />
         </section>
 
-        <section className="py-14 md:py-20">
+        <section className="py-8 md:py-12">
           <SectionTitle
             title="Joki Rank Mobile Legends"
             desc="Lihat emblem rank dan tarif joki per bintang."
@@ -135,7 +155,7 @@ function Home() {
           />
         </section>
         {rankService && <RankBoostCalculatorReference service={rankService} coupons={db.coupons} />}
-        <section className="mb-14 rounded-2xl border border-[#ecd46e] bg-[#fffbed] px-6 py-5 shadow-[0_10px_28px_-24px_rgba(104,76,0,.55)] md:mb-20 md:px-7 md:py-6">
+        <section className="mb-8 rounded-2xl border border-[#ecd46e] bg-[#fffbed] px-6 py-5 shadow-[0_10px_28px_-24px_rgba(104,76,0,.55)] md:mb-12 md:px-7 md:py-6">
           <div>
             <h2 className="text-xl font-black tracking-tight text-[#172033]">Cara Order Joki Rank</h2>
             <p className="mt-0.5 text-xs text-[#697386]">Gampang, cepat, dan aman.</p>
@@ -164,19 +184,22 @@ function Home() {
               },
             ].map((step) => (
               <article key={step.title} className="min-w-0">
-                <img
-                  src={step.image}
-                  alt=""
-                  aria-hidden="true"
-                  className="h-20 w-28 object-contain object-left sm:h-24 sm:w-32"
-                />
+                <div className="relative flex h-20 w-32 items-center justify-center sm:h-24">
+          <span className="absolute inset-x-0 bottom-1 top-2 rounded-[50%] bg-[radial-gradient(ellipse_at_center,#ffe47c_0%,#ffedaa_68%,#fff6d1_100%)] sm:bottom-2 sm:top-3" />
+                  <img
+                    src={step.image}
+                    alt=""
+                    aria-hidden="true"
+                    className="relative h-full w-full object-contain"
+                  />
+                </div>
                 <h3 className="mt-2 text-sm font-black text-[#1f2937]">{step.title}</h3>
                 <p className="mt-1 text-xs leading-5 text-[#718096]">{step.text}</p>
               </article>
             ))}
           </div>
         </section>
-        <section className="pb-14 md:pb-20">
+        <section className="pb-8 md:pb-12">
           <div className="relative overflow-hidden rounded-[2rem] border border-[#ebe4cc] bg-gradient-to-br from-white via-white to-[#fff9e8] p-5 shadow-[0_24px_70px_-48px_rgba(15,23,42,.35)] sm:p-7 md:p-9">
             <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-[#ffd84d]/20 blur-3xl" />
             <div className="relative flex flex-col justify-between gap-4 border-b border-[#ece8dc] pb-6 sm:flex-row sm:items-end">
@@ -293,25 +316,7 @@ function Home() {
             </div>
           </div>
         </section>
-        <section className="relative mb-14 overflow-hidden rounded-3xl bg-[#101419] px-7 py-8 text-white md:mb-20 md:px-12">
-          <div className="absolute -right-10 -top-20 h-64 w-64 rounded-full bg-primary/20 blur-3xl" />
-          <div className="relative flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-center">
-            <div>
-              <p className="text-sm font-semibold text-primary">Pakai kode promo</p>
-              <h2 className="mt-1 text-3xl font-black">BOTAKHEMAT</h2>
-              <p className="mt-1 text-white/65">
-                Dapatkan diskon <span className="font-bold text-primary">10%</span> untuk paket joki
-                MLBB.
-              </p>
-            </div>
-            <Button asChild className="text-[#101419]">
-              <Link to="/joki">
-                Pilih paket <ArrowRight />
-              </Link>
-            </Button>
-          </div>
-        </section>
-        <section className="w-full pb-16 md:pb-20">
+        <section className="w-full pb-4 md:pb-6">
           <div className="mb-6 text-center">
             <p className="inline-flex items-center gap-2 rounded-full border border-[#ecd46e] bg-[#fff6cd] px-3.5 py-1.5 text-[11px] font-black uppercase tracking-[.18em] text-[#967200]">
               <MessageCircleQuestion className="h-4 w-4" /> FAQ
@@ -513,6 +518,7 @@ function RankPriceCard({
   pricePerStar: number;
 }) {
   const theme = rankTheme(rank);
+  const background = rankBackgroundAsset(rank);
   const cardStyle = {
     "--rank-color": theme.color,
     "--rank-light": theme.light,
@@ -523,14 +529,23 @@ function RankPriceCard({
   return (
     <article
       style={cardStyle}
-      className="group relative aspect-[406/632] w-full select-none transition duration-300 hover:-translate-y-1.5"
+      className="group relative isolate aspect-[406/632] w-full select-none transition duration-300 hover:-translate-y-1.5"
     >
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 overflow-hidden"
+        className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
         style={{ clipPath: "polygon(19% 4%, 96% 4%, 81% 97.2%, 2% 97.2%)" }}
       >
         <div className="rank-card-surface absolute inset-0" />
+        <img
+          src={background.src}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          draggable={false}
+          className={`rank-card-background absolute inset-0 h-full w-full opacity-[0.26] ${background.fit}`}
+        />
+        <span className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,.18),transparent_38%,rgba(15,23,42,.16))]" />
         <span className="rank-card-orb rank-card-orb-one" />
         <span className="rank-card-orb rank-card-orb-two" />
         <span className="rank-card-particle rank-card-particle-one" />
@@ -544,15 +559,12 @@ function RankPriceCard({
         aria-hidden="true"
         loading="lazy"
         draggable={false}
-        className="pointer-events-none absolute -left-[41.9%] -top-[5.4%] h-[113.9%] w-[177.3%] max-w-none select-none object-contain drop-shadow-[0_10px_18px_rgba(15,23,42,.16)] transition duration-200 group-hover:drop-shadow-[0_14px_28px_rgba(15,23,42,.3)]"
+        className="pointer-events-none absolute -left-[41.9%] -top-[5.4%] z-10 h-[113.9%] w-[177.3%] max-w-none select-none object-contain drop-shadow-[0_10px_18px_rgba(15,23,42,.16)] transition duration-200 group-hover:drop-shadow-[0_14px_28px_rgba(15,23,42,.3)]"
       />
-      <span
-        style={{ color: theme.ink }}
-        className="absolute left-1/2 top-[6%] -translate-x-1/2 text-[10px] font-black tracking-widest sm:text-xs"
-      >
+      <span className="absolute left-1/2 top-[6%] -translate-x-1/2 text-[10px] font-black tracking-widest text-white sm:text-xs">
         {String(index + 1).padStart(2, "0")}
       </span>
-      <div className="absolute inset-0 flex flex-col items-center justify-center px-[17%] text-center">
+      <div className="absolute inset-0 z-20 flex flex-col items-center justify-center px-[17%] text-center text-white">
         <span className="rank-emblem-halo absolute top-[22%] h-[29%] w-[40%] rounded-full" />
         <img
           src={rankAsset(rank)}
@@ -563,15 +575,14 @@ function RankPriceCard({
         />
         <div className="mt-[9%] w-full">
           <h3
-            style={{ color: theme.ink }}
-            className="truncate text-[13px] font-black uppercase tracking-wide sm:text-base"
+            className="truncate text-[13px] font-black uppercase tracking-wide text-white sm:text-base"
           >
             {rank}
           </h3>
-          <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-[#44515f]/75 sm:text-[11px]">
+          <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-white/80 sm:text-[11px]">
             Harga per bintang
           </p>
-          <p className="mt-1 text-sm font-black text-[#101419] sm:text-lg">
+          <p className="mt-1 text-sm font-black text-white sm:text-lg">
             {pricePerStar > 0 ? rupiah(pricePerStar) : "Hubungi CS"}
           </p>
         </div>
@@ -618,6 +629,21 @@ function rankBorderAsset(rank: string) {
   if (normalized.includes("mythic")) return "/border-rank/Border Mythic.png";
   if (normalized.includes("legend")) return "/border-rank/Border Legends.png";
   return "/border-rank/Border Master.png";
+}
+
+function rankBackgroundAsset(rank: string) {
+  const normalized = rank.toLowerCase();
+  if (normalized.includes("warrior")) return { src: "/border-rank/bg-warrior.png", fit: "object-cover" };
+  if (normalized.includes("elite")) return { src: "/border-rank/bg-elite.png", fit: "object-cover" };
+  if (normalized.includes("grandmaster")) return { src: "/border-rank/bg-grandmaster.png", fit: "object-cover" };
+  if (normalized.includes("master")) return { src: "/border-rank/bg-master.png", fit: "object-cover" };
+  if (normalized.includes("epic")) return { src: "/border-rank/bg-epic.png", fit: "object-cover" };
+  if (normalized.includes("immortal")) return { src: "/border-rank/bg-mythic-immortal.png", fit: "object-cover" };
+  if (normalized.includes("glory")) return { src: "/border-rank/bg-mythic-glory.png", fit: "object-cover" };
+  if (normalized.includes("honor")) return { src: "/border-rank/bg-mythic-honor.png", fit: "object-cover" };
+  if (normalized.includes("mythic")) return { src: "/border-rank/bg-mythic.png", fit: "object-cover" };
+  if (normalized.includes("legend")) return { src: "/border-rank/bg-legends.png", fit: "object-cover" };
+  return { src: "/border-rank/bg-master.png", fit: "object-cover" };
 }
 
 function HeroCategory({
@@ -705,7 +731,7 @@ function RankBoostCalculator({ service, coupons }: { service: JokiService; coupo
   };
 
   return (
-    <section className="pb-14 md:pb-20">
+    <section className="pb-8 md:pb-12">
       <div className="mb-6">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#9a7500]">
           Mobile Legends · Rank Boost
@@ -850,7 +876,7 @@ function RankBoostCalculatorReference({
   };
 
   return (
-    <section id="kalkulator-joki" className="scroll-mt-28 pb-14 md:pb-20">
+    <section id="kalkulator-joki" className="scroll-mt-28 pb-8 md:pb-12">
       <div className="relative overflow-hidden rounded-3xl border border-[#ffd84d]/50 bg-white shadow-[0_24px_60px_-42px_rgba(15,23,42,.55)]">
         <img
           src="/rank-calculator/background.jpg"
