@@ -1,0 +1,39 @@
+<svg width="240" height="220" viewBox="0 0 240 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="top" x1="35" y1="40" x2="196" y2="82" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#BDF3FF"/>
+      <stop offset=".45" stop-color="#35BFFF"/>
+      <stop offset="1" stop-color="#0755F4"/>
+    </linearGradient>
+    <linearGradient id="left" x1="38" y1="78" x2="115" y2="190" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#75E2FF"/>
+      <stop offset="1" stop-color="#0877F7"/>
+    </linearGradient>
+    <linearGradient id="mid" x1="104" y1="72" x2="126" y2="195" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C8F7FF"/>
+      <stop offset=".42" stop-color="#249FFF"/>
+      <stop offset="1" stop-color="#0347E7"/>
+    </linearGradient>
+    <linearGradient id="right" x1="190" y1="75" x2="135" y2="195" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0651E8"/>
+      <stop offset=".5" stop-color="#087EF7"/>
+      <stop offset="1" stop-color="#022DBD"/>
+    </linearGradient>
+    <filter id="shadow" x="10" y="17" width="222" height="203" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#168BFF" flood-opacity=".32"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)" stroke="#D8F7FF" stroke-width="2" stroke-linejoin="round">
+    <path d="M24 80L66 35H174L216 80L120 198L24 80Z" fill="url(#left)"/>
+    <path d="M24 80L66 35L91 80H24Z" fill="#4CCEFF"/>
+    <path d="M66 35H174L149 80H91L66 35Z" fill="url(#top)"/>
+    <path d="M174 35L216 80H149L174 35Z" fill="#0B62F0"/>
+    <path d="M24 80H91L120 198L24 80Z" fill="url(#left)"/>
+    <path d="M91 80H149L120 198L91 80Z" fill="url(#mid)"/>
+    <path d="M149 80H216L120 198L149 80Z" fill="url(#right)"/>
+  </g>
+  <path d="M70 51L83 62L56 72L70 51Z" fill="white" fill-opacity=".75"/>
+  <path d="M165 47L175 58L157 65L165 47Z" fill="white" fill-opacity=".55"/>
+  <path d="M51 107L60 121L45 125L51 107Z" fill="white"/>
+  <path d="M194 97L200 107L189 111L194 97Z" fill="#9DEBFF"/>
+</svg>
