@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import pubgMobileBackground from "@/assets/pubg-mobile.png";
 import { Link } from "@tanstack/react-router";
 import {
   Check,
@@ -162,6 +163,13 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
   const total = subtotal + paymentFee;
 
   if (!gameSlug) {
+    const games = [
+      { slug: "mobile-legends", name: "Mobile Legends", status: "Joki tersedia", style: "from-[#07182c] via-[#15395d] to-[#0b1020]", image: "/rank-calculator/background.jpg", available: true },
+      { slug: "pubg-mobile", name: "PUBG Mobile", status: "Segera hadir", style: "from-[#5b3211] via-[#bb7b22] to-[#19130d]", image: pubgMobileBackground, available: false },
+      { slug: "valorant", name: "Valorant", status: "Segera hadir", style: "from-[#591a24] via-[#bd3439] to-[#170e16]", image: "/games/valorant.png", available: false },
+      { slug: "e-football", name: "E-Football", status: "Segera hadir", style: "from-[#082e55] via-[#087bc2] to-[#071525]", image: "/games/e-football.png", available: false },
+    ];
+
     return (
       <section className="mb-8">
         <div className="mb-5">
@@ -172,21 +180,44 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
           </div>
           <p className="mt-1 text-sm text-[#68758b]">Pilih game untuk melihat paket joki.</p>
         </div>
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3 lg:grid-cols-6">
-          <Link
-            to="/joki/$slug"
-            params={{ slug: "mobile-legends" }}
-            aria-label="Pilih Joki Mobile Legends"
-            className="group relative aspect-[3/4] overflow-hidden rounded-2xl border border-[#ecd46e] bg-[#101827] shadow-[0_14px_35px_-26px_rgba(104,76,0,.65)] transition hover:-translate-y-1 hover:border-[#d7aa00] hover:shadow-[0_18px_35px_-22px_rgba(215,170,0,.65)]"
-          >
-            <img src="/rank-calculator/background.jpg" alt="" className="absolute inset-0 h-full w-full object-cover opacity-65 transition duration-500 group-hover:scale-105" />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#101827] via-[#101827]/20 to-transparent" />
-            <img src="/rank-calculator/mythical-glory.png" alt="" className="absolute left-1/2 top-[38%] h-16 w-16 -translate-x-1/2 -translate-y-1/2 object-contain drop-shadow-xl sm:h-24 sm:w-24" />
-            <div className="absolute inset-x-0 bottom-0 p-2.5 text-white sm:p-4">
-              <p className="text-[10px] font-bold text-[#ffe785] sm:text-xs">Default</p>
-              <h3 className="mt-1 text-xs font-black leading-tight sm:text-base">Mobile Legends</h3>
-            </div>
-          </Link>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+          {games.map((game) => {
+            const card = (
+              <>
+                <div className={"absolute inset-0 bg-gradient-to-br " + game.style} />
+                <img src={game.image} alt="" className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+                {game.available && (
+                  <img src="/rank-calculator/mythical-glory.png" alt="" className="absolute left-1/2 top-[42%] h-16 w-16 -translate-x-1/2 -translate-y-1/2 object-contain drop-shadow-xl sm:h-24 sm:w-24" />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#080d18] via-transparent to-black/10" />
+                <div className="absolute inset-x-0 bottom-0 p-3 text-white sm:p-4">
+                  <p className="text-[10px] font-bold text-[#ffe785] sm:text-xs">{game.status}</p>
+                  <h3 className="mt-1 text-xs font-black leading-tight sm:text-base">{game.name}</h3>
+                </div>
+              </>
+            );
+            const className = "group relative aspect-[3/4] overflow-hidden rounded-2xl border " +
+              (game.available
+                ? "border-[#ecd46e] shadow-[0_14px_35px_-26px_rgba(104,76,0,.65)] hover:border-[#d7aa00] hover:shadow-[0_18px_35px_-22px_rgba(215,170,0,.65)]"
+                : "border-white/20 shadow-[0_14px_35px_-26px_rgba(16,24,39,.55)]") +
+              " bg-[#101827]";
+
+            return game.available ? (
+              <Link
+                key={game.slug}
+                to="/joki/$slug"
+                params={{ slug: game.slug }}
+                aria-label={"Pilih Joki " + game.name}
+                className={className + " transition hover:-translate-y-1"}
+              >
+                {card}
+              </Link>
+            ) : (
+              <div key={game.slug} aria-label={game.name + ", segera hadir"} className={className + " cursor-default"}>
+                {card}
+              </div>
+            );
+          })}
         </div>
       </section>
     );

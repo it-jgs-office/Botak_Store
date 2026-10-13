@@ -50,9 +50,51 @@ function getTabFromHash(): ServiceTab {
     : "joki";
 }
 
+function ServiceNavigation({
+  activeTab,
+  onSelect,
+}: {
+  activeTab: ServiceTab;
+  onSelect: (tab: ServiceTab) => void;
+}) {
+  const items = [
+    { id: "joki", label: "Joki Rank", Icon: Swords },
+    { id: "topup", label: "Top Up", Icon: Gem },
+    { id: "orders", label: "Cek Pesanan", Icon: ClipboardList },
+    { id: "voucher", label: "Voucher", Icon: TicketPercent },
+  ] as const;
+
+  return (
+    <div className="mx-auto w-full max-w-7xl px-3 py-2 sm:px-4">
+      <nav aria-label="Navigasi layanan" className="grid grid-cols-4 gap-1 rounded-2xl border border-[#ecd46e] bg-[linear-gradient(135deg,#fffdf4,#fff7d8)]/95 p-1 shadow-[0_14px_35px_-22px_rgba(178,134,0,.45)] backdrop-blur-md sm:rounded-full sm:p-1.5">
+        {items.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => onSelect(id)}
+            aria-selected={activeTab === id}
+            className={
+              "flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-black transition sm:flex-row sm:gap-2 sm:rounded-full sm:px-3 sm:py-3 sm:text-sm " +
+              (activeTab === id
+                ? "bg-[#ffd84d] text-[#17191d] shadow-[0_8px_18px_-9px_rgba(178,134,0,.75)] hover:bg-[#ffca24]"
+                : "bg-white/90 text-[#293144] shadow-sm hover:bg-[#fffaf0]")
+            }
+          >
+            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#fff1ae] text-[#8a6800] sm:h-7 sm:w-7">
+              <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </span>
+            <span className="truncate">{label}</span>
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+}
 function Home() {
   const db = useDB();
   const [serviceTab, setServiceTab] = useState<ServiceTab>(getTabFromHash);
+  const serviceNavAnchorRef = useRef<HTMLDivElement>(null);
+  const [serviceNavFixed, setServiceNavFixed] = useState(false);
   const featured = useMemo(
     () =>
       db.services
@@ -87,6 +129,18 @@ function Home() {
     return () => window.removeEventListener("hashchange", updateTab);
   }, []);
 
+  useEffect(() => {
+    const anchor = serviceNavAnchorRef.current;
+    if (!anchor) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setServiceNavFixed(!entry.isIntersecting && entry.boundingClientRect.top < 0),
+      { threshold: 0 },
+    );
+    observer.observe(anchor);
+    return () => observer.disconnect();
+  }, []);
+
+
   return (
     <PublicLayout footerGap="tight">
       <main className="mx-auto w-full max-w-7xl px-3 sm:px-4">
@@ -110,26 +164,22 @@ function Home() {
             pricePerStar={perStarService?.pricing.pricePerStar ?? 0}
           />
         </section>
-        <div className="sticky top-[3.75rem] z-30 mb-5 px-0.5 sm:top-[4.5rem] sm:mb-8 sm:px-1">
-          <nav aria-label="Navigasi layanan" className="grid grid-cols-4 gap-1 rounded-2xl border border-[#ecd46e] bg-[linear-gradient(135deg,#fffdf4,#fff7d8)]/95 p-1 shadow-[0_14px_35px_-22px_rgba(178,134,0,.45)] backdrop-blur-md sm:rounded-full sm:p-1.5">
-            <button type="button" onClick={() => selectTab("joki")} aria-selected={serviceTab === "joki"} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-black shadow-[0_8px_18px_-9px_rgba(178,134,0,.75)] transition sm:flex-row sm:gap-2 sm:rounded-full sm:px-3 sm:py-3 sm:text-sm ${serviceTab === "joki" ? "bg-[#ffd84d] text-[#17191d] hover:bg-[#ffca24]" : "bg-white/90 text-[#293144] shadow-sm hover:bg-[#fffaf0]"}`}>
-              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/55 text-[#6f5200] sm:h-7 sm:w-7"><Swords className="h-3.5 w-3.5 sm:h-4 sm:w-4" /></span>
-              <span className="truncate">Joki Rank</span>
-            </button>
-            <button type="button" onClick={() => selectTab("topup")} aria-selected={serviceTab === "topup"} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-black shadow-sm transition sm:flex-row sm:gap-2 sm:rounded-full sm:px-3 sm:py-3 sm:text-sm ${serviceTab === "topup" ? "bg-[#ffd84d] text-[#17191d] shadow-[0_8px_18px_-9px_rgba(178,134,0,.75)] hover:bg-[#ffca24]" : "bg-white/90 text-[#293144] hover:bg-[#fffaf0]"}`}>
-              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#fff1ae] text-[#8a6800] sm:h-7 sm:w-7"><Gem className="h-3.5 w-3.5 sm:h-4 sm:w-4" /></span>
-              <span className="truncate">Top Up</span>
-            </button>
-
-            <button type="button" onClick={() => selectTab("orders")} aria-selected={serviceTab === "orders"} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-black shadow-sm transition sm:flex-row sm:gap-2 sm:rounded-full sm:px-3 sm:py-3 sm:text-sm ${serviceTab === "orders" ? "bg-[#ffd84d] text-[#17191d] shadow-[0_8px_18px_-9px_rgba(178,134,0,.75)] hover:bg-[#ffca24]" : "bg-white/90 text-[#293144] hover:bg-[#fffaf0]"}`}>
-              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#fff1ae] text-[#8a6800] sm:h-7 sm:w-7"><ClipboardList className="h-3.5 w-3.5 sm:h-4 sm:w-4" /></span>
-              <span className="truncate">Cek Pesanan</span>
-            </button>
-            <button type="button" onClick={() => selectTab("voucher")} aria-selected={serviceTab === "voucher"} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-black shadow-sm transition sm:flex-row sm:gap-2 sm:rounded-full sm:px-3 sm:py-3 sm:text-sm ${serviceTab === "voucher" ? "bg-[#ffd84d] text-[#17191d] shadow-[0_8px_18px_-9px_rgba(178,134,0,.75)] hover:bg-[#ffca24]" : "bg-white/90 text-[#293144] hover:bg-[#fffaf0]"}`}>
-              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#fff1ae] text-[#8a6800] sm:h-7 sm:w-7"><TicketPercent className="h-3.5 w-3.5 sm:h-4 sm:w-4" /></span>
-              <span className="truncate">Voucher</span>
-            </button>
-          </nav>
+        <div
+          ref={serviceNavAnchorRef}
+          className={
+            "relative mb-5 px-0.5 sm:mb-8 sm:px-1 " +
+            (serviceNavFixed ? "min-h-[4.5rem] sm:min-h-[5rem]" : "")
+          }
+        >
+          <div
+            className={
+              serviceNavFixed
+                ? "fixed inset-x-0 top-14 z-50 mx-auto max-w-7xl sm:top-16"
+                : "sticky top-14 z-30 sm:top-16"
+            }
+          >
+            <ServiceNavigation activeTab={serviceTab} onSelect={selectTab} />
+          </div>
         </div>
         {serviceTab === "joki" && (
           <>
