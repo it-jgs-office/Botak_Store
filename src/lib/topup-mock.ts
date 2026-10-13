@@ -41,7 +41,8 @@ const COIN = "🪙";
 const TICKET = "🎟️";
 
 export const TOPUP_PAYMENTS: TopupPayment[] = [
-  { id: "qris", group: "QRIS", name: "QRIS", fee: 0, icon: "◧", note: "Instan" },
+  { id: "qris", group: "QRIS", name: "QRIS All Payment (Semua E-Wallet & M-Banking)", fee: 0, icon: "◧", note: "Instan" },
+  { id: "nobu-va", group: "Virtual Account", name: "VA Bank Nobu (Virtual Account / Transfer)", fee: 4000, icon: "N" },
   { id: "gopay", group: "E-Wallet", name: "GoPay", fee: 1000, icon: "G" },
   { id: "ovo", group: "E-Wallet", name: "OVO", fee: 1000, icon: "O" },
   { id: "dana", group: "E-Wallet", name: "DANA", fee: 1000, icon: "D" },
@@ -53,19 +54,37 @@ export const TOPUP_PAYMENTS: TopupPayment[] = [
   { id: "alfamart", group: "Gerai", name: "Alfamart", fee: 2500, icon: "A" },
 ];
 
+const mlbbDiamondPrices = [
+  [5, 1723], [10, 3441], [12, 3848], [11, 3848], [15, 4759], [14, 4959],
+  [19, 5972], [20, 6277], [24, 7574], [28, 8552], [30, 9313], [34, 10660],
+  [36, 11133], [42, 12806], [44, 12806], [45, 14010], [46, 14324], [54, 15800],
+  [59, 16904], [64, 18422], [65, 19485], [70, 20547], [80, 23583], [85, 24340],
+  [89, 26120], [92, 26920], [98, 28453], [110, 33745], [129, 38751], [140, 42394],
+  [145, 43911], [148, 44367], [167, 48527], [172, 50347], [176, 52409], [182, 53625],
+  [200, 59088], [222, 65461], [240, 70621], [258, 77324], [261, 78539], [277, 82940],
+  [282, 84458], [284, 85217], [296, 87794], [300, 87312], [323, 94295], [406, 115774],
+  [408, 119208], [429, 124038], [500, 147738], [514, 150015], [570, 163610], [642, 188340],
+  [706, 206854], [716, 209434], [770, 224610], [841, 244489], [875, 250861], [966, 277571],
+  [1050, 310030], [1084, 310959], [1136, 334159], [1163, 332356], [1358, 397595],
+  [1446, 409446], [1669, 482124], [1750, 501697], [2010, 543732], [2232, 607168],
+  [2398, 674211], [2578, 700799], [3073, 837988], [3638, 1014296], [4020, 1107439],
+  [4830, 1306860], [4958, 1348851], [5532, 1492043], [6030, 1621146],
+  [9288, 2528867], [10050, 2831818], [18510, 4571709], [20100, 5427305],
+] as const;
+
 const mlbbPacks: TopupPack[] = [
-  { id: "ml-3", label: "3 Diamond", price: 1500, icon: DIAMOND },
-  { id: "ml-5", label: "5 Diamond", price: 2200, icon: DIAMOND },
-  { id: "ml-12", label: "12 Diamond", price: 5500, icon: DIAMOND },
-  { id: "ml-28", label: "28 Diamond", price: 12500, icon: DIAMOND },
-  { id: "ml-56", label: "56 Diamond", price: 24000, icon: DIAMOND, badge: "Populer" },
-  { id: "ml-86", label: "86 Diamond", price: 36000, icon: DIAMOND, badge: "Populer" },
-  { id: "ml-172", label: "172 Diamond", price: 72000, icon: DIAMOND },
-  { id: "ml-257", label: "257 Diamond", price: 106000, icon: DIAMOND },
-  { id: "ml-344", label: "344 Diamond", price: 142000, icon: DIAMOND },
-  { id: "ml-514", label: "514 Diamond", price: 208000, icon: DIAMOND, badge: "Hemat" },
-  { id: "ml-706", label: "706 Diamond", price: 282000, icon: DIAMOND },
-  { id: "ml-tw", label: "Twilight Pass", sub: "MLBB", price: 135000, icon: TICKET, badge: "Pass" },
+  ...mlbbDiamondPrices.map(([amount, price]) => ({
+    id: `ml-${amount}`,
+    label: `${amount} Diamond`,
+    price,
+    icon: DIAMOND,
+  })),
+  { id: "ml-weekly", label: "Weekly Diamond Pass", price: 30819, icon: TICKET, badge: "Best Seller" },
+  { id: "ml-weekly-2", label: "Weekly Diamond Pass 2x", price: 60613, icon: TICKET, badge: "Best Seller" },
+  { id: "ml-weekly-3", label: "Weekly Diamond Pass 3x", price: 91407, icon: TICKET, badge: "Best Seller" },
+  { id: "ml-weekly-4", label: "Weekly Diamond Pass 4x", price: 121201, icon: TICKET, badge: "Best Seller" },
+  { id: "ml-twilight", label: "Twilight Pass", price: 155500, icon: TICKET },
+  { id: "ml-weekly-5", label: "Weekly Diamond Pass 5x", price: 152995, icon: TICKET, badge: "Best Seller" },
 ];
 
 export const TOPUP_GAMES: TopupGame[] = [

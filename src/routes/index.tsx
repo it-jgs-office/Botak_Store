@@ -2,40 +2,31 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
+  ClipboardList,
   ChevronLeft,
   ChevronRight,
-  Clock3,
+  Eye,
+  Gem,
   Headphones,
-  MessageCircleQuestion,
   MoveRight,
   Pause,
   Play,
   ShieldCheck,
-  Trophy,
-  Users,
+  Swords,
+  TicketPercent,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { PublicLayout } from "@/components/bs/PublicLayout";
-import { Field, NativeSelect, OrderStatusBadge } from "@/components/bs/ui";
+import { OrderCheckTab } from "@/components/bs/OrderCheckTab";
+import { TopupTab } from "@/components/bs/TopupTab";
+import { JokiTab } from "@/components/bs/JokiTab";
+import { Field, NativeSelect } from "@/components/bs/ui";
 import { calcPrice, mlbbRankStarRange } from "@/lib/pricing";
 import { saveDraft } from "@/lib/actions";
 import { useDB } from "@/lib/store";
-import { fmtDateTime, rupiah } from "@/lib/format";
+import { rupiah } from "@/lib/format";
 import { MLBB_GAME_ID } from "@/lib/seed";
 import type { CheckoutDraft, Coupon, JokiService } from "@/lib/types";
 
@@ -49,44 +40,19 @@ export const Route = createFileRoute("/")({
   component: Home,
 });
 
-export const FAQS = [
-  {
-    q: "Apakah akun saya aman?",
-    a: "Penjoki bermain manual tanpa cheat atau tools pihak ketiga. Data pesanan dipakai untuk proses layanan.",
-  },
-  {
-    q: "Berapa lama proses joki?",
-    a: "Estimasi tampil di setiap paket. Pesanan kecil biasanya mulai dikerjakan dalam hitungan menit.",
-  },
-  {
-    q: "Metode pembayaran apa saja yang tersedia?",
-    a: "Pembayaran dapat dilakukan melalui QRIS, e-wallet, dan virtual account yang tersedia saat checkout.",
-  },
-  {
-    q: "Apakah bisa request hero atau role tertentu?",
-    a: "Bisa. Tulis hero, role, atau gaya bermain yang diinginkan pada catatan pesanan agar diteruskan ke penjoki.",
-  },
-  {
-    q: "Bagaimana cara memantau progres pesanan?",
-    a: "Gunakan halaman Cek Pesanan dengan nomor order kamu. Admin juga akan menghubungi melalui WhatsApp bila ada pembaruan penting.",
-  },
-  {
-    q: "Apakah boleh login ke akun saat pengerjaan berlangsung?",
-    a: "Sebaiknya jangan login saat pengerjaan agar progres tidak terganggu. Kamu akan diberi kabar ketika pesanan sudah selesai atau membutuhkan konfirmasi.",
-  },
-  {
-    q: "Bisakah pesanan dibatalkan?",
-    a: "Pesanan yang belum dikerjakan dapat diajukan pembatalan melalui CS. Pesanan yang sudah berjalan akan ditinjau terlebih dahulu sesuai progresnya.",
-  },
-  {
-    q: "Bagaimana jika target tidak tercapai?",
-    a: "Hubungi CS dari halaman cek pesanan. Tim kami membantu meninjau progres dan opsi penyelesaiannya.",
-  },
-];
+type ServiceTab = "topup" | "joki" | "orders" | "voucher";
+
+function getTabFromHash(): ServiceTab {
+  if (typeof window === "undefined") return "joki";
+  const tab = window.location.hash.replace("#", "");
+  return ["topup", "joki", "orders", "voucher"].includes(tab)
+    ? (tab as ServiceTab)
+    : "joki";
+}
 
 function Home() {
   const db = useDB();
-  const [q, setQ] = useState("");
+  const [serviceTab, setServiceTab] = useState<ServiceTab>(getTabFromHash);
   const featured = useMemo(
     () =>
       db.services
@@ -104,48 +70,38 @@ function Home() {
       ? []
       : ["Mythical Immortal"]),
   ];
-  const recent = useMemo(
-    () =>
-      db.orders
-        .filter((o) => o.detail.gameId === MLBB_GAME_ID && o.paymentStatus === "paid")
-        .slice(0, 4),
-    [db.orders],
-  );
+  const selectTab = (tab: ServiceTab) => {
+    setServiceTab(tab);
+    window.history.replaceState(null, "", `#${tab}`);
+  };
+  const openCalculator = () => {
+    selectTab("joki");
+    window.setTimeout(() => {
+      document.getElementById("kalkulator-joki")?.scrollIntoView({ behavior: "smooth" });
+    }, 0);
+  };
+
+  useEffect(() => {
+    const updateTab = () => setServiceTab(getTabFromHash());
+    window.addEventListener("hashchange", updateTab);
+    return () => window.removeEventListener("hashchange", updateTab);
+  }, []);
 
   return (
     <PublicLayout footerGap="tight">
-      <main className="mx-auto w-full max-w-7xl px-4">
-        <section
-          aria-label="Pilihan layanan Mobile Legends"
-          className="relative z-30 -mt-3 grid grid-cols-1 gap-3 pb-8 md:grid-cols-2 md:gap-4"
-        >
-          <HeroCategory
-            image="/mlbb-diamond.svg"
-            imageAlt="Diamond Mobile Legends"
-            title="Top Up Diamond"
-            text="Proses instan, harga terbaik"
-            href="/joki"
-            tone="blue"
-          />
-          <HeroCategory
-            image="/rank-calculator/mythical-glory.png"
-            imageAlt="Emblem Mythical Glory"
-            title="Joki Rank ML"
-            text="Naik rank aman dan terpercaya"
-            href="/joki"
-            tone="gold"
-          />
-        </section>
-
-        <section className="py-8 md:py-12">
+      <main className="mx-auto w-full max-w-7xl px-3 sm:px-4">
+        <section className="py-5 sm:py-8 md:py-12">
           <SectionTitle
             title="Joki Rank Mobile Legends"
             desc="Lihat emblem rank dan tarif joki per bintang."
             action={
-              <Button asChild variant="outline" className="hidden sm:inline-flex">
-                <Link to="/joki">
-                  Lihat semua paket <ArrowRight />
-                </Link>
+              <Button
+                type="button"
+                variant="outline"
+                className="hidden sm:inline-flex"
+                onClick={openCalculator}
+              >
+                Hitung harga joki <ArrowRight />
               </Button>
             }
           />
@@ -154,13 +110,41 @@ function Home() {
             pricePerStar={perStarService?.pricing.pricePerStar ?? 0}
           />
         </section>
-        {rankService && <RankBoostCalculatorReference service={rankService} coupons={db.coupons} />}
-        <section className="mb-8 rounded-2xl border border-[#ecd46e] bg-[#fffbed] px-6 py-5 shadow-[0_10px_28px_-24px_rgba(104,76,0,.55)] md:mb-12 md:px-7 md:py-6">
+        <div className="sticky top-[3.75rem] z-30 mb-5 px-0.5 sm:top-[4.5rem] sm:mb-8 sm:px-1">
+          <nav aria-label="Navigasi layanan" className="grid grid-cols-4 gap-1 rounded-2xl border border-[#ecd46e] bg-[linear-gradient(135deg,#fffdf4,#fff7d8)]/95 p-1 shadow-[0_14px_35px_-22px_rgba(178,134,0,.45)] backdrop-blur-md sm:rounded-full sm:p-1.5">
+            <button type="button" onClick={() => selectTab("joki")} aria-selected={serviceTab === "joki"} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-black shadow-[0_8px_18px_-9px_rgba(178,134,0,.75)] transition sm:flex-row sm:gap-2 sm:rounded-full sm:px-3 sm:py-3 sm:text-sm ${serviceTab === "joki" ? "bg-[#ffd84d] text-[#17191d] hover:bg-[#ffca24]" : "bg-white/90 text-[#293144] shadow-sm hover:bg-[#fffaf0]"}`}>
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/55 text-[#6f5200] sm:h-7 sm:w-7"><Swords className="h-3.5 w-3.5 sm:h-4 sm:w-4" /></span>
+              <span className="truncate">Joki Rank</span>
+            </button>
+            <button type="button" onClick={() => selectTab("topup")} aria-selected={serviceTab === "topup"} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-black shadow-sm transition sm:flex-row sm:gap-2 sm:rounded-full sm:px-3 sm:py-3 sm:text-sm ${serviceTab === "topup" ? "bg-[#ffd84d] text-[#17191d] shadow-[0_8px_18px_-9px_rgba(178,134,0,.75)] hover:bg-[#ffca24]" : "bg-white/90 text-[#293144] hover:bg-[#fffaf0]"}`}>
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#fff1ae] text-[#8a6800] sm:h-7 sm:w-7"><Gem className="h-3.5 w-3.5 sm:h-4 sm:w-4" /></span>
+              <span className="truncate">Top Up</span>
+            </button>
+
+            <button type="button" onClick={() => selectTab("orders")} aria-selected={serviceTab === "orders"} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-black shadow-sm transition sm:flex-row sm:gap-2 sm:rounded-full sm:px-3 sm:py-3 sm:text-sm ${serviceTab === "orders" ? "bg-[#ffd84d] text-[#17191d] shadow-[0_8px_18px_-9px_rgba(178,134,0,.75)] hover:bg-[#ffca24]" : "bg-white/90 text-[#293144] hover:bg-[#fffaf0]"}`}>
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#fff1ae] text-[#8a6800] sm:h-7 sm:w-7"><ClipboardList className="h-3.5 w-3.5 sm:h-4 sm:w-4" /></span>
+              <span className="truncate">Cek Pesanan</span>
+            </button>
+            <button type="button" onClick={() => selectTab("voucher")} aria-selected={serviceTab === "voucher"} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[10px] font-black shadow-sm transition sm:flex-row sm:gap-2 sm:rounded-full sm:px-3 sm:py-3 sm:text-sm ${serviceTab === "voucher" ? "bg-[#ffd84d] text-[#17191d] shadow-[0_8px_18px_-9px_rgba(178,134,0,.75)] hover:bg-[#ffca24]" : "bg-white/90 text-[#293144] hover:bg-[#fffaf0]"}`}>
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#fff1ae] text-[#8a6800] sm:h-7 sm:w-7"><TicketPercent className="h-3.5 w-3.5 sm:h-4 sm:w-4" /></span>
+              <span className="truncate">Voucher</span>
+            </button>
+          </nav>
+        </div>
+        {serviceTab === "joki" && (
+          <>
+        <JokiTab />
+
+        {rankService && (
+          <RankBoostCalculatorReference service={rankService} coupons={db.coupons} />
+        )}
+
+        <section className="mb-6 rounded-2xl border border-[#ecd46e] bg-white px-4 py-4 shadow-[0_10px_28px_-24px_rgba(104,76,0,.55)] sm:px-6 sm:py-5 md:mb-12 md:px-7 md:py-6">
           <div>
             <h2 className="text-xl font-black tracking-tight text-[#172033]">Cara Order Joki Rank</h2>
             <p className="mt-0.5 text-xs text-[#697386]">Gampang, cepat, dan aman.</p>
           </div>
-          <div className="mt-4 grid gap-6 sm:grid-cols-2 xl:grid-cols-4 xl:gap-7">
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4 xl:gap-7">
             {[
               {
                 image: "/icon/pilihpaket.png",
@@ -183,8 +167,8 @@ function Home() {
                 text: "Akun kamu dikerjakan oleh player berpengalaman.",
               },
             ].map((step) => (
-              <article key={step.title} className="min-w-0">
-                <div className="relative flex h-20 w-32 items-center justify-center sm:h-24">
+              <article key={step.title} className="min-w-0 text-center sm:text-left">
+                <div className="relative mx-auto flex h-16 w-24 items-center justify-center sm:mx-0 sm:h-24 sm:w-32">
           <span className="absolute inset-x-0 bottom-1 top-2 rounded-[50%] bg-[radial-gradient(ellipse_at_center,#ffe47c_0%,#ffedaa_68%,#fff6d1_100%)] sm:bottom-2 sm:top-3" />
                   <img
                     src={step.image}
@@ -194,170 +178,61 @@ function Home() {
                   />
                 </div>
                 <h3 className="mt-2 text-sm font-black text-[#1f2937]">{step.title}</h3>
-                <p className="mt-1 text-xs leading-5 text-[#718096]">{step.text}</p>
+                <p className="mt-1 text-[11px] leading-4 text-[#718096] sm:text-xs sm:leading-5">{step.text}</p>
               </article>
             ))}
           </div>
         </section>
         <section className="pb-8 md:pb-12">
-          <div className="relative overflow-hidden rounded-[2rem] border border-[#ebe4cc] bg-gradient-to-br from-white via-white to-[#fff9e8] p-5 shadow-[0_24px_70px_-48px_rgba(15,23,42,.35)] sm:p-7 md:p-9">
-            <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-[#ffd84d]/20 blur-3xl" />
-            <div className="relative flex flex-col justify-between gap-4 border-b border-[#ece8dc] pb-6 sm:flex-row sm:items-end">
+          <div className="relative overflow-hidden rounded-[2rem] border border-[#e7e9ed] bg-[linear-gradient(145deg,#ffffff_0%,#ffffff_66%,#fff9e8_100%)] p-4 shadow-[0_24px_70px_-42px_rgba(31,42,61,.22)] sm:p-6 md:p-8">
+            <div className="pointer-events-none absolute -left-24 top-16 h-56 w-56 rounded-full bg-[#ffd84d]/15 blur-3xl" />
+            <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-[#ffd84d]/20 blur-3xl" />
+
+            <div className="relative flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
               <div>
-                <p className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[.18em] text-[#967200]">
-                  <ShieldCheck className="h-4 w-4" /> Kenapa BotakStore
+                <p className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[.16em] text-[#7d6420]">
+                  <ShieldCheck className="h-4 w-4 fill-[#ffc928] text-[#ffc928]" /> Status Pesanan
                 </p>
-                <h2 className="mt-2 text-2xl font-black md:text-3xl">Aman & Terpercaya</h2>
-                <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-                  Setiap pesanan ditangani dengan proses yang jelas, aman, dan mudah dipantau.
-                </p>
-              </div>
-              <div className="flex w-fit items-center gap-2 rounded-full border border-[#ecd46e] bg-[#fff6cd] px-3.5 py-2 text-xs font-bold text-[#725800]">
-                <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,.12)]" />
-                Layanan aktif 24 jam
+                <h2 className="mt-3 text-2xl font-black tracking-[-.04em] text-[#101827] sm:text-3xl md:text-4xl">Aman & <span className="text-[#f7bf00]">Terpercaya</span></h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-[#66728a]">Setiap pesanan diproses dengan aman, transparan, dan dapat dipantau secara real-time.</p>
               </div>
             </div>
 
-            <div className="relative mt-6">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <Benefit
-                  icon={<ShieldCheck />}
-                  title="Transaksi aman"
-                  text="Data pesanan digunakan hanya untuk proses layanan."
-                />
-                <Benefit
-                  icon={<Trophy />}
-                  title="Player berpengalaman"
-                  text="Dikerjakan oleh joki berpengalaman push rank MLBB."
-                />
-                <Benefit
-                  icon={<Clock3 />}
-                  title="Proses cepat"
-                  text="Pengerjaan mengikuti antrean dan estimasi yang diberikan."
-                />
-                <Benefit
-                  icon={<Headphones />}
-                  title="CS 24 jam"
-                  text="Siap membantu kapan saja melalui WhatsApp."
-                />
-              </div>
-              <div className="mt-5 flex flex-col rounded-2xl border border-[#e6e8eb] bg-white p-4 shadow-[0_12px_32px_rgba(20,27,36,.06)] sm:p-5">
-                <div className="flex items-center justify-between gap-3 border-b border-[#edf0f2] pb-4">
-                  <div className="flex items-center gap-3">
-                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#fff2b7] text-[#896800]">
-                      <Users className="h-5 w-5" />
-                    </span>
-                    <div>
-                      <p className="font-black">Pesanan terbaru</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        Update joki Mobile Legends
-                      </p>
-                    </div>
-                  </div>
-                  <span className="rounded-full bg-[#f1f3f5] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#727b85]">
-                    Live
-                  </span>
-                </div>
-                <div className="mt-4 flex-1 overflow-hidden rounded-xl border border-[#edf0f2]">
-                  <Table className="min-w-[500px] text-xs">
-                    <TableHeader className="bg-[#faf8f1] [&_tr]:border-[#ece7d6]">
-                      <TableRow className="hover:bg-transparent">
-                        <TableHead className="h-9 px-3 text-[10px] font-black uppercase tracking-[.12em] text-[#80745a]">
-                          Pelanggan
-                        </TableHead>
-                        <TableHead className="h-9 px-3 text-[10px] font-black uppercase tracking-[.12em] text-[#80745a]">
-                          Paket
-                        </TableHead>
-                        <TableHead className="h-9 px-3 text-[10px] font-black uppercase tracking-[.12em] text-[#80745a]">
-                          Target
-                        </TableHead>
-                        <TableHead className="h-9 px-3 text-[10px] font-black uppercase tracking-[.12em] text-[#80745a]">
-                          Waktu
-                        </TableHead>
-                        <TableHead className="h-9 px-3 text-right text-[10px] font-black uppercase tracking-[.12em] text-[#80745a]">
-                          Status
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {recent.map((o) => (
-                        <TableRow key={o.id} className="border-[#edf0f2] hover:bg-[#fffaf0]">
-                          <TableCell className="px-3 py-3 font-bold text-[#252a31]">
-                            {o.customerName.charAt(0).toUpperCase()}***
-                          </TableCell>
-                          <TableCell className="max-w-28 px-3 py-3 font-semibold text-[#3c434c]">
-                            <span className="block truncate" title={o.detail.serviceName}>
-                              {o.detail.serviceName}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-28 px-3 py-3 text-muted-foreground">
-                            <span className="block truncate" title={orderTarget(o)}>
-                              {orderTarget(o)}
-                            </span>
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap px-3 py-3 text-[11px] text-muted-foreground">
-                            {fmtDateTime(o.createdAt)}
-                          </TableCell>
-                          <TableCell className="px-3 py-3 text-right">
-                            <OrderStatusBadge status={o.status} />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-                <Link
-                  to="/cek-order"
-                  className="mt-2 inline-flex items-center justify-center gap-2 rounded-xl border border-[#e1e4e8] bg-[#fafbfc] px-4 py-3 text-xs font-black text-[#343a42] transition hover:border-[#e3c34d] hover:bg-[#fff7d9]"
-                >
-                  Cek status pesanan <ArrowRight className="h-4 w-4" />
-                </Link>
-              </div>
+            <div className="relative mt-5 grid grid-cols-2 gap-2.5 sm:mt-6 sm:gap-3 xl:grid-cols-4">
+              <Benefit icon={<Zap />} title="Transaksi Aman" text="Menggunakan payment gateway terpercaya." />
+              <Benefit icon={<Headphones />} title="Player Berpengalaman" text="Dikerjakan oleh tim berpengalaman di rank tinggi." />
+              <Benefit icon={<Eye />} title="Proses Real-time" text="Status pesanan bisa dipantau kapan saja." />
+              <Benefit icon={<ShieldCheck />} title="CS 24 Jam" text="Siap membantu kapan pun kamu membutuhkan." />
+            </div>
+
+            <div className="relative mt-5 flex flex-col gap-4 overflow-hidden rounded-2xl border border-[#e7b900] bg-[linear-gradient(100deg,#2c210a_0%,#111827_48%,#7b5100_100%)] px-5 py-5 text-white sm:flex-row sm:items-center sm:justify-between sm:px-7">
+              <div className="pointer-events-none absolute right-24 top-1/2 h-24 w-24 -translate-y-1/2 rounded-full bg-[#ffd22f]/25 blur-2xl" />
+              <div className="relative flex items-center gap-4"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[#ffd22f] text-[#151922]"><Zap className="h-6 w-6" /></span><div><p className="font-black sm:text-lg">Mau Joki Rank Sekarang?</p><p className="mt-0.5 text-xs text-white/70">Pilih layanan, lakukan pembayaran, dan biarkan pro player kami bekerja!</p></div></div>
+              <Button type="button" onClick={openCalculator} className="relative rounded-full bg-[#ffd22f] px-6 font-black text-[#171b23] hover:bg-[#ffe169]">Order Sekarang <ArrowRight /></Button>
             </div>
           </div>
         </section>
-        <section className="w-full pb-4 md:pb-6">
-          <div className="mb-6 text-center">
-            <p className="inline-flex items-center gap-2 rounded-full border border-[#ecd46e] bg-[#fff6cd] px-3.5 py-1.5 text-[11px] font-black uppercase tracking-[.18em] text-[#967200]">
-              <MessageCircleQuestion className="h-4 w-4" /> FAQ
-            </p>
-            <h2 className="mt-3 text-2xl font-black tracking-tight md:text-3xl">Pertanyaan Umum</h2>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-              Hal yang paling sering ditanyakan seputar joki rank di BotakStore.
-            </p>
-          </div>
-          <Accordion
-            type="single"
-            collapsible
-            className="divide-y divide-[#edf0f2] rounded-2xl border border-border bg-white px-5 shadow-card sm:px-6"
-          >
-            {FAQS.map((f, i) => (
-              <AccordionItem key={f.q} value={f.q} className="border-b-0">
-                <AccordionTrigger className="gap-4 py-5 text-left text-[15px] font-bold hover:no-underline [&[data-state=open]>svg]:rotate-180 [&>svg]:rounded-full [&>svg]:bg-[#fff3c6] [&>svg]:p-1 [&>svg]:text-[#8a6800]">
-                  <span className="flex items-center gap-3">
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#151a20] text-xs font-black text-[#ffd84d]">
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    {f.q}
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent className="pl-11 pr-2 leading-6 text-muted-foreground">
-                  {f.a}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-          <p className="mt-5 text-center text-sm text-muted-foreground">
-            Masih bingung?{" "}
-            <Link
-              to="/cek-order"
-              className="font-bold text-[#8a6800] underline-offset-4 hover:underline"
-            >
-              Lacak pesanan
-            </Link>{" "}
-            atau hubungi CS kami yang siap 24 jam.
-          </p>
-        </section>
+
+          </>
+        )}
+
+        {serviceTab === "topup" && <TopupTab />}
+
+        {serviceTab === "orders" && <OrderCheckTab />}
+
+        {serviceTab === "voucher" && (
+          <section className="pb-8 md:pb-12">
+            <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-[#ecd46e] bg-white px-4 py-8 text-center shadow-[0_18px_45px_-36px_rgba(104,76,0,.45)] sm:min-h-64 sm:rounded-3xl sm:px-6 sm:py-12">
+              <span className="grid h-12 w-12 place-items-center rounded-xl bg-[#fff3bd] text-[#8a6800] sm:h-16 sm:w-16 sm:rounded-2xl">
+                <TicketPercent className="h-6 w-6 sm:h-8 sm:w-8" />
+              </span>
+              <h2 className="mt-4 text-xl font-black text-[#172033] sm:mt-5 sm:text-2xl">Voucher Belum Tersedia</h2>
+              <p className="mt-2 max-w-md text-sm leading-6 text-[#697386]">
+                Voucher dan promo BotakStore akan tersedia di sini.
+              </p>
+            </div>
+          </section>
+        )}
       </main>
     </PublicLayout>
   );
@@ -365,7 +240,7 @@ function Home() {
 
 function RankCarousel({ ranks, pricePerStar }: { ranks: string[]; pricePerStar: number }) {
   const [activeIndex, setActiveIndex] = useState(0);
-  const [visibleCount, setVisibleCount] = useState(2);
+  const [visibleCount, setVisibleCount] = useState(3);
   const [isPaused, setIsPaused] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -374,7 +249,7 @@ function RankCarousel({ ranks, pricePerStar }: { ranks: string[]; pricePerStar: 
   useEffect(() => {
     const small = window.matchMedia("(min-width: 640px)");
     const large = window.matchMedia("(min-width: 1024px)");
-    const updateVisibleCount = () => setVisibleCount(large.matches ? 5 : small.matches ? 3 : 2);
+    const updateVisibleCount = () => setVisibleCount(large.matches ? 5 : 3);
     updateVisibleCount();
     small.addEventListener("change", updateVisibleCount);
     large.addEventListener("change", updateVisibleCount);
@@ -440,7 +315,7 @@ function RankCarousel({ ranks, pricePerStar }: { ranks: string[]; pricePerStar: 
           {ranks.map((rank, index) => (
             <div
               key={rank}
-              className="w-[calc((100%-0.75rem)/2)] flex-none sm:w-[calc((100%-2rem)/3)] lg:w-[calc((100%-4rem)/5)]"
+              className="w-[calc((100%-1.5rem)/3)] flex-none sm:w-[calc((100%-2rem)/3)] lg:w-[calc((100%-4rem)/5)]"
               role="group"
               aria-roledescription="slide"
               aria-label={`${index + 1} dari ${ranks.length}: ${rank}`}
@@ -456,17 +331,17 @@ function RankCarousel({ ranks, pricePerStar }: { ranks: string[]; pricePerStar: 
               type="button"
               onClick={() => goTo(activeIndex === 0 ? lastStart : activeIndex - 1)}
               aria-label="Rank sebelumnya"
-              className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-black/5 bg-white/95 text-[#17191d] shadow-md transition hover:bg-[#ffd84d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7aa00]"
+              className="absolute left-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-black/5 bg-white/95 text-[#17191d] shadow-md transition hover:bg-[#ffd84d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7aa00] sm:left-3 sm:h-10 sm:w-10"
             >
-              <ChevronLeft className="h-5 w-5" />
+              <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
             <button
               type="button"
               onClick={() => goTo(activeIndex >= lastStart ? 0 : activeIndex + 1)}
               aria-label="Rank berikutnya"
-              className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-black/5 bg-white/95 text-[#17191d] shadow-md transition hover:bg-[#ffd84d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7aa00]"
+              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-black/5 bg-white/95 text-[#17191d] shadow-md transition hover:bg-[#ffd84d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7aa00] sm:right-3 sm:h-10 sm:w-10"
             >
-              <ChevronRight className="h-5 w-5" />
+              <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
           </>
         )}
@@ -575,14 +450,14 @@ function RankPriceCard({
         />
         <div className="mt-[9%] w-full">
           <h3
-            className="truncate text-[13px] font-black uppercase tracking-wide text-white sm:text-base"
+            className="truncate text-[10px] font-black uppercase tracking-wide text-white sm:text-base"
           >
             {rank}
           </h3>
-          <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-white/80 sm:text-[11px]">
+          <p className="mt-1 text-[8px] font-bold uppercase tracking-wide text-white/80 sm:mt-1.5 sm:text-[11px]">
             Harga per bintang
           </p>
-          <p className="mt-1 text-sm font-black text-white sm:text-lg">
+          <p className="mt-1 text-[11px] font-black text-white sm:text-lg">
             {pricePerStar > 0 ? rupiah(pricePerStar) : "Hubungi CS"}
           </p>
         </div>
@@ -664,7 +539,7 @@ function HeroCategory({
   return (
     <Link
       to={href}
-      className={`group relative isolate grid min-h-[132px] grid-cols-[5.6rem_minmax(0,1fr)_2.9rem] items-center gap-2.5 overflow-hidden rounded-[1.65rem] border-2 px-3.5 py-3 text-[#111722] shadow-[0_15px_36px_rgba(23,54,91,.09)] transition duration-200 hover:-translate-y-1 hover:shadow-[0_20px_42px_rgba(23,54,91,.15)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7aa00] focus-visible:ring-offset-2 sm:min-h-[154px] sm:grid-cols-[7rem_minmax(0,1fr)_3.8rem] sm:gap-3 sm:px-5 sm:py-4 ${tone === "blue" ? "border-[#c9e7ff] bg-[linear-gradient(105deg,#dff2ff_0%,#f6fbff_30%,#fff_66%,#f7fbff_100%)] hover:border-[#8fcaff]" : "border-[#ffe49a] bg-[linear-gradient(105deg,#ffd633_0%,#ffed9a_25%,#fffdf6_64%,#fffaf0_100%)] hover:border-[#ffd23a]"}`}
+      className={`group relative isolate grid min-h-[108px] grid-cols-[4rem_minmax(0,1fr)_2.25rem] items-center gap-2 overflow-hidden rounded-2xl border-2 px-2.5 py-2.5 text-[#111722] shadow-[0_15px_36px_rgba(23,54,91,.09)] transition duration-200 hover:-translate-y-1 hover:shadow-[0_20px_42px_rgba(23,54,91,.15)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7aa00] focus-visible:ring-offset-2 sm:min-h-[154px] sm:grid-cols-[7rem_minmax(0,1fr)_3.8rem] sm:gap-3 sm:rounded-[1.65rem] sm:px-5 sm:py-4 ${tone === "blue" ? "border-[#c9e7ff] bg-[linear-gradient(105deg,#dff2ff_0%,#f6fbff_30%,#fff_66%,#f7fbff_100%)] hover:border-[#8fcaff]" : "border-[#ffe49a] bg-[linear-gradient(105deg,#ffd633_0%,#ffed9a_25%,#fffdf6_64%,#fffaf0_100%)] hover:border-[#ffd23a]"}`}
     >
       <span
         aria-hidden="true"
@@ -674,7 +549,7 @@ function HeroCategory({
         aria-hidden="true"
         className={`pointer-events-none absolute inset-y-0 right-10 -z-10 w-36 opacity-50 ${tone === "blue" ? "bg-[linear-gradient(145deg,transparent_32%,rgba(50,161,255,.13)_33%,rgba(50,161,255,.13)_43%,transparent_44%)]" : "bg-[linear-gradient(145deg,transparent_32%,rgba(255,188,0,.16)_33%,rgba(255,188,0,.16)_43%,transparent_44%)]"}`}
       />
-      <span className="relative flex h-[5.5rem] w-[5.5rem] shrink-0 items-center justify-center sm:h-28 sm:w-28">
+      <span className="relative flex h-16 w-16 shrink-0 items-center justify-center sm:h-28 sm:w-28">
         <span
           className={`absolute inset-2 rounded-full blur-xl ${tone === "blue" ? "bg-[#58bdff]/35" : "bg-[#ffc400]/35"}`}
         />
@@ -685,15 +560,15 @@ function HeroCategory({
         />
       </span>
       <span className="min-w-0 self-center">
-        <strong className="block text-lg font-black leading-[1.05] tracking-[-0.035em] sm:text-[1.7rem]">
+        <strong className="block text-sm font-black leading-[1.05] tracking-[-0.035em] sm:text-[1.7rem]">
           {title}
         </strong>
-        <span className="mt-2 block text-xs font-medium leading-snug text-[#657082] sm:text-[1.05rem]">
+        <span className="mt-1 block text-[10px] font-medium leading-snug text-[#657082] sm:mt-2 sm:text-[1.05rem]">
           {text}
         </span>
       </span>
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#ffd129] text-[#10141b] shadow-[0_0_0_10px_rgba(255,216,77,.13),0_6px_15px_rgba(222,165,0,.28)] transition group-hover:translate-x-1 group-hover:bg-[#ffc916] sm:h-14 sm:w-14">
-        <ArrowRight className="h-5 w-5 sm:h-7 sm:w-7" strokeWidth={2.7} />
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#ffd129] text-[#10141b] shadow-[0_0_0_6px_rgba(255,216,77,.13),0_6px_15px_rgba(222,165,0,.28)] transition group-hover:translate-x-1 group-hover:bg-[#ffc916] sm:h-14 sm:w-14 sm:shadow-[0_0_0_10px_rgba(255,216,77,.13),0_6px_15px_rgba(222,165,0,.28)]">
+        <ArrowRight className="h-4 w-4 sm:h-7 sm:w-7" strokeWidth={2.7} />
       </span>
     </Link>
   );
@@ -736,14 +611,14 @@ function RankBoostCalculator({ service, coupons }: { service: JokiService; coupo
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#9a7500]">
           Mobile Legends · Rank Boost
         </p>
-        <h2 className="mt-2 text-2xl font-black md:text-3xl">Rank Boost Calculator</h2>
+        <h2 className="mt-2 text-xl font-black sm:text-2xl md:text-3xl">Rank Boost Calculator</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Pilih rank awal dan target untuk melihat estimasi harga joki.
         </p>
       </div>
 
       <div className="grid overflow-hidden rounded-3xl border border-[#e8e4d8] bg-white shadow-[0_16px_50px_rgba(25,30,38,.07)] md:grid-cols-[1.35fr_.85fr]">
-        <div className="p-5 sm:p-7 md:p-8">
+        <div className="p-4 sm:p-7 md:p-8">
           <div className="grid gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
             <Field label="Rank saat ini">
               <NativeSelect
@@ -805,10 +680,10 @@ function RankBoostCalculator({ service, coupons }: { service: JokiService; coupo
           </div>
         </div>
 
-        <aside className="flex flex-col justify-between gap-5 bg-[#fff8df] p-5 sm:p-7 md:p-8">
+        <aside className="flex flex-col justify-between gap-4 bg-[#fff8df] p-4 sm:gap-5 sm:p-7 md:p-8">
           <div>
             <p className="text-sm font-semibold text-[#56504a]">Estimasi total</p>
-            <p className="mt-2 text-3xl font-black tracking-tight text-[#17191d] sm:text-4xl">
+            <p className="mt-2 text-2xl font-black tracking-tight text-[#17191d] sm:text-4xl">
               {rupiah(quote.snapshot.total)}
             </p>
             <p className="mt-2 text-xs leading-relaxed text-[#716b61]">
@@ -891,7 +766,7 @@ function RankBoostCalculatorReference({
           <p className="text-[9px] font-black uppercase tracking-[.22em] text-[#a07800]">
             BotakStore Boost
           </p>
-          <h2 className="mt-1 text-2xl font-black sm:text-3xl">Rank Boost Calculator</h2>
+          <h2 className="mt-1 text-xl font-black sm:text-3xl">Rank Boost Calculator</h2>
         </div>
 
         <div className="relative z-10 p-4 sm:p-7">
@@ -1107,25 +982,18 @@ function rankAsset(rank: string) {
 
 function Benefit({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
   return (
-    <article className="group flex items-center gap-4 rounded-2xl border border-[#e7eaed] bg-[#fbfcfd] p-4 transition duration-200 hover:-translate-y-0.5 hover:border-[#e6c74d] hover:bg-white hover:shadow-[0_12px_28px_rgba(20,27,36,.07)] sm:p-5">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#151a20] text-[#ffd84d] transition group-hover:bg-[#ffd84d] group-hover:text-[#151a20] [&>svg]:h-5 [&>svg]:w-5">
+    <article className="group flex flex-col items-center gap-2.5 rounded-xl border border-[#e5e8ed] bg-white/90 p-3 text-center transition duration-200 hover:-translate-y-0.5 hover:border-[#e5bd29] hover:shadow-[0_14px_30px_-22px_rgba(20,27,36,.24)] sm:flex-row sm:items-start sm:gap-4 sm:rounded-2xl sm:p-5 sm:text-left">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[linear-gradient(145deg,#fff3b2,#ffd94f)] text-[#151922] shadow-[inset_0_0_0_1px_rgba(255,255,255,.7)] [&>svg]:h-4 [&>svg]:w-4 sm:h-11 sm:w-11 sm:rounded-xl sm:[&>svg]:h-5 sm:[&>svg]:w-5">
         {icon}
       </span>
       <div className="min-w-0">
-        <h3 className="font-black">{title}</h3>
-        <p className="mt-1.5 text-xs leading-5 text-muted-foreground sm:text-sm">{text}</p>
+        <h3 className="text-sm font-black text-[#202738]">{title}</h3>
+        <p className="mt-1 text-[11px] leading-4 text-[#6b7890] sm:mt-1.5 sm:text-xs sm:leading-5">{text}</p>
       </div>
     </article>
   );
 }
 
-function orderTarget(order: { detail: { fromRank?: string; toRank?: string; stars?: number } }) {
-  if (order.detail.fromRank && order.detail.toRank) {
-    return `${order.detail.fromRank} → ${order.detail.toRank}`;
-  }
-
-  return order.detail.stars ? `${order.detail.stars} bintang` : "Paket joki";
-}
 function SectionTitle({
   title,
   desc,
@@ -1136,9 +1004,9 @@ function SectionTitle({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 flex items-end justify-between gap-4">
+    <div className="mb-4 flex items-end justify-between gap-4 sm:mb-6">
       <div>
-        <h2 className="text-2xl font-black md:text-3xl">{title}</h2>
+        <h2 className="text-xl font-black sm:text-2xl md:text-3xl">{title}</h2>
         {desc && <p className="mt-1 text-sm text-muted-foreground">{desc}</p>}
       </div>
       {action}

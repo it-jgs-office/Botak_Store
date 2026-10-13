@@ -41,14 +41,14 @@ const SECTIONS = [
 function KebijakanPage() {
   return (
     <PublicLayout>
-      <div className="mx-auto w-full max-w-3xl px-4 py-12">
-        <h1 className="text-3xl font-bold">Kebijakan Layanan</h1>
-        <p className="mt-2 text-muted-foreground">Syarat, keamanan, dan privasi penggunaan BotakStore.</p>
-        <div className="mt-8 space-y-6">
+      <div className="mx-auto w-full max-w-3xl px-3 py-7 sm:px-4 sm:py-12">
+        <h1 className="text-2xl font-bold sm:text-3xl">Kebijakan Layanan</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Syarat, keamanan, dan privasi penggunaan BotakStore.</p>
+        <div className="mt-5 grid grid-cols-2 gap-2.5 sm:mt-8 sm:gap-4">
           {SECTIONS.map((s) => (
-            <section key={s.title} className="rounded-xl border border-border bg-card p-5">
-              <h2 className="text-lg font-semibold">{s.title}</h2>
-              <p className="mt-2 text-sm text-muted-foreground">{s.body}</p>
+            <section key={s.title} className="rounded-xl border border-border bg-card p-3 sm:p-5">
+              <h2 className="text-sm font-semibold sm:text-lg">{s.title}</h2>
+              <p className="mt-2 text-[11px] leading-4 text-muted-foreground sm:text-sm sm:leading-5">{s.body}</p>
             </section>
           ))}
         </div>

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CekOrderRouteImport } from './routes/cek-order'
 import { Route as CheckoutRouteImport } from './routes/checkout'
+import { Route as DaftarRouteImport } from './routes/daftar'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as FaqRouteImport } from './routes/faq'
 import { Route as KebijakanRouteImport } from './routes/kebijakan'
@@ -35,6 +36,11 @@ const CekOrderRoute = CekOrderRouteImport.update({
 const CheckoutRoute = CheckoutRouteImport.update({
   id: '/checkout',
   path: '/checkout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DaftarRoute = DaftarRouteImport.update({
+  id: '/daftar',
+  path: '/daftar',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -87,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/cek-order': typeof CekOrderRoute
   '/checkout': typeof CheckoutRoute
+  '/daftar': typeof DaftarRoute
   '/dashboard': typeof DashboardRoute
   '/faq': typeof FaqRoute
   '/kebijakan': typeof KebijakanRoute
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/cek-order': typeof CekOrderRoute
   '/checkout': typeof CheckoutRoute
+  '/daftar': typeof DaftarRoute
   '/dashboard': typeof DashboardRoute
   '/faq': typeof FaqRoute
   '/kebijakan': typeof KebijakanRoute
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/cek-order': typeof CekOrderRoute
   '/checkout': typeof CheckoutRoute
+  '/daftar': typeof DaftarRoute
   '/dashboard': typeof DashboardRoute
   '/faq': typeof FaqRoute
   '/kebijakan': typeof KebijakanRoute
@@ -132,6 +141,7 @@ export interface FileRouteTypes {
     | '/'
     | '/cek-order'
     | '/checkout'
+    | '/daftar'
     | '/dashboard'
     | '/faq'
     | '/kebijakan'
@@ -146,6 +156,7 @@ export interface FileRouteTypes {
     | '/'
     | '/cek-order'
     | '/checkout'
+    | '/daftar'
     | '/dashboard'
     | '/faq'
     | '/kebijakan'
@@ -160,6 +171,7 @@ export interface FileRouteTypes {
     | '/'
     | '/cek-order'
     | '/checkout'
+    | '/daftar'
     | '/dashboard'
     | '/faq'
     | '/kebijakan'
@@ -175,6 +187,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CekOrderRoute: typeof CekOrderRoute
   CheckoutRoute: typeof CheckoutRoute
+  DaftarRoute: typeof DaftarRoute
   DashboardRoute: typeof DashboardRoute
   FaqRoute: typeof FaqRoute
   KebijakanRoute: typeof KebijakanRoute
@@ -207,6 +220,13 @@ declare module '@tanstack/react-router' {
       path: '/checkout'
       fullPath: '/checkout'
       preLoaderRoute: typeof CheckoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/daftar': {
+      id: '/daftar'
+      path: '/daftar'
+      fullPath: '/daftar'
+      preLoaderRoute: typeof DaftarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -279,6 +299,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CekOrderRoute: CekOrderRoute,
   CheckoutRoute: CheckoutRoute,
+  DaftarRoute: DaftarRoute,
   DashboardRoute: DashboardRoute,
   FaqRoute: FaqRoute,
   KebijakanRoute: KebijakanRoute,

@@ -59,8 +59,8 @@ export function Avatar({ name, hue = 280, className }: { name: string; hue?: num
 
 export function EmptyState({ title, desc, icon: Icon = Inbox, action }: { title: string; desc?: string; icon?: LucideIcon; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border px-6 py-12 text-center">
-      <Icon className="h-10 w-10 text-muted-foreground" />
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border px-4 py-8 text-center sm:px-6 sm:py-12">
+      <Icon className="h-8 w-8 text-muted-foreground sm:h-10 sm:w-10" />
       <p className="mt-3 font-semibold">{title}</p>
       {desc && <p className="mt-1 max-w-sm text-sm text-muted-foreground">{desc}</p>}
       {action && <div className="mt-4">{action}</div>}
@@ -85,7 +85,7 @@ export function PageHeader({ title, desc, actions }: { title: string; desc?: str
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="text-2xl font-bold md:text-3xl">{title}</h1>
+        <h1 className="text-xl font-bold sm:text-2xl md:text-3xl">{title}</h1>
         {desc && <p className="mt-1 text-sm text-muted-foreground">{desc}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
@@ -95,7 +95,7 @@ export function PageHeader({ title, desc, actions }: { title: string; desc?: str
 
 export function Panel({ title, children, className, actions }: { title?: string; children: ReactNode; className?: string; actions?: ReactNode }) {
   return (
-    <section className={cn("rounded-xl border border-border bg-card p-5", className)}>
+    <section className={cn("rounded-xl border border-border bg-card p-4 sm:p-5", className)}>
       {(title || actions) && (
         <div className="mb-4 flex items-center justify-between gap-2">
           {title && <h2 className="text-base font-semibold">{title}</h2>}
@@ -110,7 +110,7 @@ export function Panel({ title, children, className, actions }: { title?: string;
 export function Field({ label, error, children, hint }: { label: string; error?: string | undefined; hint?: string | undefined; children: ReactNode }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-sm font-medium">{label}</span>
+      <span className="text-xs font-medium sm:text-sm">{label}</span>
       {children}
       {error ? <span className="block text-xs text-destructive">{error}</span> : hint ? <span className="block text-xs text-muted-foreground">{hint}</span> : null}
     </label>

@@ -131,6 +131,7 @@
 @utility shadow-card {
   box-shadow: 0 8px 24px rgba(18, 27, 36, 0.07);
 }
+
 @utility text-gradient {
   background-image: var(--gradient-primary);
   -webkit-background-clip: text;
@@ -349,6 +350,28 @@
 }
 .logo-lockup-animated .logo-wordmark {
   animation: botak-logo-reveal 7s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+@media (max-width: 639px) {
+  .logo-lockup {
+    width: 118px;
+    height: 36px;
+  }
+
+  .logo-icon-shell,
+  .logo-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .logo-icon-shell {
+    flex-basis: 34px;
+  }
+
+  .logo-wordmark {
+    width: 78px;
+    margin-left: 5px;
+  }
 }
 
 @keyframes botak-logo-spin {

@@ -56,6 +56,28 @@ export function updateProfile(userId: string, patch: { name: string; phone: stri
     users: d.users.map((u) => (u.id === userId ? { ...u, ...patch } : u)),
   }));
 }
+export function deleteAccount(userId: string) {
+  updateStoredData((d) => ({
+    users: d.users.filter((u) => u.id !== userId),
+    session: d.session?.userId === userId ? null : d.session,
+    notifications: d.notifications.filter((n) => n.userId !== userId),
+  }));
+}
+export function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+): Result {
+  const u = getDB().users.find((x) => x.id === userId);
+  if (!u) return fail("Akun tidak ditemukan.");
+  const expected = u.password ?? "botak123";
+  if (currentPassword !== expected) return fail("Kata sandi saat ini salah.");
+  if (newPassword.length < 8) return fail("Kata sandi baru minimal 8 karakter.");
+  updateStoredData((d) => ({
+    users: d.users.map((x) => (x.id === userId ? { ...x, password: newPassword } : x)),
+  }));
+  return { ok: true, data: undefined };
+}
 
 /* ---------------- Notifications ---------------- */
 function notif(userId: string, title: string, body: string, link?: string): Notification {

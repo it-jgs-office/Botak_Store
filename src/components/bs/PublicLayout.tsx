@@ -1,16 +1,29 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
-import { LayoutDashboard, Menu, Search, ShoppingCart, UserRound, X } from "lucide-react";
+import { ChevronDown, LogOut, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { logout } from "@/lib/actions";
 import { useHydrated, useSession } from "./ui";
 import { BannerSlider } from "./BannerSlider";
-
-const NAV = [
-  { to: "/", label: "Beranda" },
-  { to: "/topup", label: "Top Up" },
-  { to: "/joki", label: "Joki Rank" },
-  { to: "/cek-order", label: "Cek Pesanan" },
-] as const;
+import { SiteFaq } from "./SiteFaq";
 
 export function Logo({ animated = true }: { animated?: boolean }) {
   return (
@@ -27,118 +40,118 @@ export function Logo({ animated = true }: { animated?: boolean }) {
   );
 }
 
-export function dashboardPath(role?: string) {
-  return "/dashboard";
+export function LogoutConfirmDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Keluar dari akun?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Kamu perlu masuk kembali untuk melihat profil dan riwayat transaksi.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Tetap masuk</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm} className="bg-red-600 text-white hover:bg-red-700">
+            <LogOut /> Ya, keluar
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 }
 
 export function PublicLayout({
   children,
   banner = "full",
   footerGap = "default",
+  showFaq = true,
 }: {
   children: ReactNode;
   banner?: "full" | "compact" | "none";
   footerGap?: "default" | "tight";
+  showFaq?: boolean;
 }) {
   const { session, user } = useSession();
   const hydrated = useHydrated();
-  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const [logoutOpen, setLogoutOpen] = useState(false);
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 border-b border-white/10 bg-[#090d10] text-white shadow-lg">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-3 px-3 sm:h-16 sm:px-4">
           <Logo />
-          <nav className="hidden items-center gap-1 lg:flex">
-            {NAV.map((n) => (
-              <Link
-                key={n.to}
-                to={n.to}
-                activeOptions={{ exact: n.to === "/" }}
-                className="rounded-md px-3 py-2 text-sm text-white/75 transition hover:text-primary"
-                activeProps={{ className: "text-primary font-semibold" }}
-              >
-                {n.label}
-              </Link>
-            ))}
-          </nav>
-          <div className="hidden items-center gap-2 md:flex">
-            <div className="hidden h-9 w-44 items-center gap-2 rounded-lg border border-white/10 bg-white/[.06] px-3 text-white/45 xl:flex">
-              <Search className="h-4 w-4" />
-              <span className="text-xs">Cari paket joki...</span>
-            </div>
-            <ShoppingCart className="mx-1 h-5 w-5 text-white/80" />
+          <div className="flex items-center gap-2">
             {hydrated && session && user ? (
-              <>
-                <Button asChild size="sm" className="text-[#101419]">
-                  <Link to={dashboardPath(session.role)}>
-                    <LayoutDashboard /> Dashboard
-                  </Link>
-                </Button>
-                <Link
-                  to="/profil"
-                  aria-label="Profil saya"
-                  title={user.name}
-                  className="grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-black text-[#101419] transition hover:brightness-95"
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Buka menu profil"
+                    title={user.name}
+                    className="flex items-center gap-1 rounded-full bg-primary py-1 pl-1 pr-2 text-[#101419] transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                  >
+                    <span className="grid h-8 w-8 place-items-center rounded-full bg-[#101419] text-sm font-black text-[#ffd84d]">
+                      {user.name.charAt(0).toUpperCase()}
+                    </span>
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  sideOffset={10}
+                  className="w-56 rounded-2xl border-[#ecd46e] bg-white p-2 shadow-[0_18px_45px_-24px_rgba(0,0,0,.35)]"
                 >
-                  {user.name.charAt(0).toUpperCase()}
-                </Link>
-              </>
+                  <DropdownMenuLabel className="px-3 py-2">
+                    <span className="block truncate font-black text-[#172033]">{user.name}</span>
+                    <span className="mt-0.5 block truncate text-xs font-normal text-[#718096]">{user.email}</span>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator className="bg-[#efe4b0]" />
+                  <DropdownMenuItem asChild className="cursor-pointer rounded-xl px-3 py-2.5 font-bold text-[#202738] focus:bg-[#fff8df]">
+                    <Link to="/profil"><UserRound /> Profil Saya</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="cursor-pointer rounded-xl px-3 py-2.5 font-bold text-red-600 focus:bg-red-50 focus:text-red-700"
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      setLogoutOpen(true);
+                    }}
+                  >
+                    <LogOut /> Keluar
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : (
               <>
+                <Button asChild size="sm" variant="ghost" className="text-white hover:bg-white/10 hover:text-[#ffd84d]">
+                  <Link to="/daftar">Daftar</Link>
+                </Button>
                 <Button asChild size="sm" className="text-[#101419]">
                   <Link to="/login">Masuk</Link>
                 </Button>
               </>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-white hover:bg-white/10 lg:hidden"
-            onClick={() => setOpen(!open)}
-            aria-label="Menu"
-          >
-            {open ? <X /> : <Menu />}
-          </Button>
         </div>
-        {open && (
-          <div className="border-t border-white/10 px-4 py-3 lg:hidden">
-            {NAV.map((n) => (
-              <Link
-                key={n.to}
-                to={n.to}
-                onClick={() => setOpen(false)}
-                className="block rounded-md px-3 py-2 text-sm"
-              >
-                {n.label}
-              </Link>
-            ))}
-            {session && (
-              <Link
-                to={dashboardPath(session.role)}
-                onClick={() => setOpen(false)}
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm"
-              >
-                <LayoutDashboard className="h-4 w-4" />
-                Dashboard
-              </Link>
-            )}
-            <Link
-              to={session ? "/profil" : "/login"}
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-primary-glow"
-            >
-              <UserRound className="h-4 w-4" />
-              {session ? "Profil saya" : "Masuk"}
-            </Link>
-          </div>
-        )}
       </header>
-      {banner !== "none" && <BannerSlider variant={banner} />}
+      {banner !== "none" && (
+        <div className="mx-auto w-full max-w-7xl px-3 pt-3 sm:px-4 sm:pt-4">
+          <BannerSlider variant={banner} />
+        </div>
+      )}
       <main>{children}</main>
-      <footer className={`${footerGap === "tight" ? "mt-4" : "mt-20"} border-t border-border bg-[#101419] text-white`}>
-        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-12 md:grid-cols-4">
-          <div className="space-y-3 md:col-span-2">
+      {showFaq && <SiteFaq />}
+      <footer className={`${showFaq || footerGap === "tight" ? "mt-4" : "mt-20"} border-t border-border bg-[#101419] text-white`}>
+        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-4 py-8 sm:py-10 md:grid-cols-4 md:gap-8 md:py-12">
+          <div className="col-span-2 space-y-3 md:col-span-2">
             <Logo animated={false} />
             <p className="max-w-sm text-sm text-white/60">
               Layanan joki Mobile Legends dengan paket jelas, progres transparan, dan penjoki
@@ -150,15 +163,15 @@ export function PublicLayout({
           </div>
           <div className="space-y-2 text-sm">
             <p className="font-semibold">Layanan</p>
-            <Link to="/topup" className="block text-white/60 hover:text-primary">
+            <a href="/#topup" className="block text-white/60 hover:text-primary">
               Top Up Game
-            </Link>
-            <Link to="/joki" className="block text-white/60 hover:text-primary">
+            </a>
+            <a href="/#joki" className="block text-white/60 hover:text-primary">
               Joki Rank
-            </Link>
-            <Link to="/cek-order" className="block text-white/60 hover:text-primary">
+            </a>
+            <a href="/#orders" className="block text-white/60 hover:text-primary">
               Cek Pesanan
-            </Link>
+            </a>
           </div>
           <div className="space-y-2 text-sm">
             <p className="font-semibold">Bantuan</p>
@@ -177,6 +190,28 @@ export function PublicLayout({
           Â© 2026 BotakStore. All rights reserved.
         </p>
       </footer>
+      <a
+        href="https://wa.me/6285697214711?text=KOMPLAIN"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Komplain melalui WhatsApp"
+        title="Komplain melalui WhatsApp"
+        className="fixed bottom-3 right-3 z-[60] block h-12 w-12 rounded-full transition duration-200 hover:-translate-y-1 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd84d] focus-visible:ring-offset-2 sm:bottom-6 sm:right-6 sm:h-16 sm:w-16"
+      >
+        <img
+          src="/icon/icon-wa.webp"
+          alt="WhatsApp"
+          className="h-full w-full object-contain drop-shadow-[0_8px_18px_rgba(0,0,0,.28)]"
+        />
+      </a>
+      <LogoutConfirmDialog
+        open={logoutOpen}
+        onOpenChange={setLogoutOpen}
+        onConfirm={() => {
+          logout();
+          navigate({ to: "/login" });
+        }}
+      />
     </div>
   );
 }

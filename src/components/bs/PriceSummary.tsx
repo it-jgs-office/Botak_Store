@@ -30,7 +30,7 @@ export function PriceSummary({
     ["Mode", mode?.label],
   ];
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
+    <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
       <h2 className="font-semibold">Ringkasan Pesanan</h2>
       <dl className="mt-4 space-y-2 text-sm">
         {rows
@@ -63,7 +63,7 @@ export function PriceSummary({
       </dl>
       <div className="mt-4 flex items-end justify-between border-t border-border pt-4">
         <span className="text-sm text-muted-foreground">Total</span>
-        <span className="font-display text-2xl font-bold">{rupiah(snapshot.total)}</span>
+        <span className="font-display text-xl font-bold sm:text-2xl">{rupiah(snapshot.total)}</span>
       </div>
       {children && <div className="mt-5 space-y-2">{children}</div>}
     </div>

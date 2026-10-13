@@ -26,11 +26,11 @@ const FAQS = [
 
 function FaqPage() {
   return (
-    <PublicLayout>
-      <div className="mx-auto w-full max-w-3xl px-4 py-12">
-        <h1 className="text-3xl font-bold">Pertanyaan Umum (FAQ)</h1>
-        <p className="mt-2 text-muted-foreground">Jawaban atas pertanyaan yang paling sering masuk ke tim kami.</p>
-        <Accordion type="single" collapsible className="mt-8">
+    <PublicLayout showFaq={false}>
+      <div className="mx-auto w-full max-w-3xl px-3 py-7 sm:px-4 sm:py-12">
+        <h1 className="text-2xl font-bold sm:text-3xl">Pertanyaan Umum (FAQ)</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Jawaban atas pertanyaan yang paling sering masuk ke tim kami.</p>
+        <Accordion type="single" collapsible className="mt-5 sm:mt-8">
           {FAQS.map((f) => (
             <AccordionItem key={f.q} value={f.q}>
               <AccordionTrigger>{f.q}</AccordionTrigger>
