@@ -1,0 +1,66 @@
+# ============================================================
+# BotakStore FRONTEND — https://botakstore.id
+# Hosting: cPanel / Apache (static). Upload SELURUH isi folder
+# frontend/.output/public/ ke document root domain, lalu upload
+# file .htaccess ini berdampingan dengannya.
+# Struktur yang ter-upload HARUS memuat: _shell.html, sitemap.xml,
+# robots.txt, preview.jpg, folder assets/, dan folder tiap route
+# (topup/, joki/, dst. yang berisi index.html hasil prerender).
+# ============================================================
+
+# Halaman utama "/" dilayani _shell.html (build statis tidak
+# menghasilkan index.html di root). Baris ini WAJIB ada.
+DirectoryIndex _shell.html index.html
+
+# Matikan directory listing.
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # 1. Paksa HTTPS.
+  RewriteCond %{HTTPS} off
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # 2. www.botakstore.id -> botakstore.id (canonical domain untuk SEO).
+  RewriteCond %{HTTP_HOST} ^www\.botakstore\.id$ [NC]
+  RewriteRule ^ https://botakstore.id%{REQUEST_URI} [L,R=301]
+
+  # 3. SPA fallback: file/folder route hasil prerender (mis. /topup/
+  # atau /joki/mobile-legends/) dilayani langsung oleh Apache.
+  # Path lain (mis. /profil, /checkout) diteruskan ke _shell.html
+  # lalu router client-side mengambil alih.
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ _shell.html [L]
+</IfModule>
+
+# Lindungi file sensitif.
+<FilesMatch "^\.ht">
+  Require all denied
+</FilesMatch>
+
+# Kompresi.
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/css text/xml application/xml application/javascript application/json image/svg+xml
+</IfModule>
+
+# Cache: HTML prerender jangan di-cache lama (agar update langsung
+# tampil), aset ber-hash boleh di-cache lama, gambar 1 bulan.
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/html "access plus 0 seconds"
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType image/webp "access plus 1 month"
+  ExpiresByType image/png "access plus 1 month"
+  ExpiresByType image/jpeg "access plus 1 month"
+  ExpiresByType image/gif "access plus 1 month"
+  ExpiresByType image/svg+xml "access plus 1 month"
+  ExpiresByType application/xml "access plus 1 day"
+</IfModule>
+<IfModule mod_headers.c>
+  <FilesMatch "\.(css|js)$">
+    Header append Cache-Control "public, immutable"
+  </FilesMatch>
+</IfModule>
