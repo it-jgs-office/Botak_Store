@@ -397,8 +397,10 @@ function ProfilPage() {
                 const badge = TX_BADGE[group];
                 return (
                   <li key={order.id} className="min-w-0">
-                    <Link
-                      to="/cek-order"
+                    <a
+                      href={order.id.startsWith("BS-TOPUP-") || order.id.startsWith("BS-JOKI-")
+                        ? `/invoice/${encodeURIComponent(order.id)}`
+                        : "/cek-order"}
                       className="flex h-full min-w-0 flex-col items-stretch gap-2 overflow-hidden rounded-xl border border-border bg-[#fafbfc] p-2.5 transition hover:border-[#ecd46e] hover:bg-white hover:shadow-sm sm:flex-row sm:items-center sm:gap-4 sm:rounded-2xl sm:p-4"
                     >
                       <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#fff4c5] text-[#8b6900] sm:h-12 sm:w-12 sm:rounded-xl">
@@ -421,7 +423,7 @@ function ProfilPage() {
                         </span>
                       </div>
                       <p className="mt-auto shrink-0 border-t border-border/70 pt-2 text-xs font-black sm:mt-0 sm:border-0 sm:pt-0 sm:text-sm">{rupiah(order.price.total)}</p>
-                    </Link>
+                    </a>
                   </li>
                 );
               })}

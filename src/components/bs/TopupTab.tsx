@@ -21,13 +21,11 @@ import {
   createPakasirPayment,
   fetchMobileLegendsProducts,
   type MobileLegendsAccount,
-  type PakasirPayment,
 } from "@/lib/api";
 import { recordPakasirOrder } from "@/lib/actions";
 import { useDB } from "@/lib/store";
 import { ACTIVE_PAKASIR_PAYMENT_METHODS, type PakasirMethod } from "@/lib/pakasir";
 import { TOPUP_GAMES, type TopupPack } from "@/lib/topup-mock";
-import { PaymentInstruction } from "./PaymentInstruction";
 
 const NO_PACKS: TopupPack[] = [];
 
@@ -78,7 +76,6 @@ export function TopupTab({ gameSlug }: { gameSlug?: string }) {
   const [productsError, setProductsError] = useState("");
   const [accountAttention, setAccountAttention] = useState(false);
   const [creatingPayment, setCreatingPayment] = useState(false);
-  const [paymentInstruction, setPaymentInstruction] = useState<PakasirPayment | null>(null);
   const markupPercent = Math.max(0, Number(db.settings.topupMarkupPercent ?? 0));
   const markupFlat = Math.max(0, Number(db.settings.topupMarkupFlat ?? 0));
 
@@ -241,12 +238,7 @@ export function TopupTab({ gameSlug }: { gameSlug?: string }) {
         gameUserId: normalizedUserId,
         gameServerId: normalizedServerId,
       });
-      if (payment.payment_url) {
-        window.location.assign(payment.payment_url);
-        return;
-      }
-      setPaymentInstruction(payment);
-      setCreatingPayment(false);
+      window.location.assign(`/invoice/${encodeURIComponent(payment.order_id)}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Pembayaran gagal dibuat.");
       setCreatingPayment(false);
@@ -628,7 +620,7 @@ export function TopupTab({ gameSlug }: { gameSlug?: string }) {
               className="mt-5 w-full bg-[#ffd84d] font-black text-[#17191d] hover:bg-[#f2c425]"
             >
               {creatingPayment ? <LoaderCircle className="animate-spin" /> : <Banknote />}
-              {creatingPayment ? "Membuka pembayaran..." : "Beli Sekarang"}
+              {creatingPayment ? "Membuat invoice..." : "Beli Sekarang"}
             </Button>
             <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-[#718096]">
               <LockKeyhole className="h-4 w-4" /> Pembayaran aman · Diproses otomatis 24 jam
@@ -658,7 +650,6 @@ export function TopupTab({ gameSlug }: { gameSlug?: string }) {
           </Button>
         </div>
       </div>
-      {paymentInstruction && <PaymentInstruction payment={paymentInstruction} onClose={() => setPaymentInstruction(null)} />}
     </section>
   );
 }

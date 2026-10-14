@@ -21,6 +21,7 @@ import { Route as ProfilRouteImport } from './routes/profil'
 import { Route as VoucherRouteImport } from './routes/voucher'
 import { Route as BotakstoreAdminIndexRouteImport } from './routes/botakstore-admin.index'
 import { Route as BotakstoreAdminLoginRouteImport } from './routes/botakstore-admin.login'
+import { Route as InvoiceOrderIdRouteImport } from './routes/invoice.$orderId'
 import { Route as JokiIndexRouteImport } from './routes/joki.index'
 import { Route as JokiSlugRouteImport } from './routes/joki.$slug'
 import { Route as TopupIndexRouteImport } from './routes/topup.index'
@@ -86,6 +87,11 @@ const BotakstoreAdminLoginRoute = BotakstoreAdminLoginRouteImport.update({
   path: '/botakstore-admin/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InvoiceOrderIdRoute = InvoiceOrderIdRouteImport.update({
+  id: '/invoice/$orderId',
+  path: '/invoice/$orderId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const JokiIndexRoute = JokiIndexRouteImport.update({
   id: '/joki/',
   path: '/joki/',
@@ -119,6 +125,7 @@ export interface FileRoutesByFullPath {
   '/profil': typeof ProfilRoute
   '/voucher': typeof VoucherRoute
   '/botakstore-admin/login': typeof BotakstoreAdminLoginRoute
+  '/invoice/$orderId': typeof InvoiceOrderIdRoute
   '/joki/$slug': typeof JokiSlugRoute
   '/topup/$slug': typeof TopupSlugRoute
   '/botakstore-admin/': typeof BotakstoreAdminIndexRoute
@@ -137,6 +144,7 @@ export interface FileRoutesByTo {
   '/profil': typeof ProfilRoute
   '/voucher': typeof VoucherRoute
   '/botakstore-admin/login': typeof BotakstoreAdminLoginRoute
+  '/invoice/$orderId': typeof InvoiceOrderIdRoute
   '/joki/$slug': typeof JokiSlugRoute
   '/topup/$slug': typeof TopupSlugRoute
   '/botakstore-admin': typeof BotakstoreAdminIndexRoute
@@ -156,6 +164,7 @@ export interface FileRoutesById {
   '/profil': typeof ProfilRoute
   '/voucher': typeof VoucherRoute
   '/botakstore-admin/login': typeof BotakstoreAdminLoginRoute
+  '/invoice/$orderId': typeof InvoiceOrderIdRoute
   '/joki/$slug': typeof JokiSlugRoute
   '/topup/$slug': typeof TopupSlugRoute
   '/botakstore-admin/': typeof BotakstoreAdminIndexRoute
@@ -176,6 +185,7 @@ export interface FileRouteTypes {
     | '/profil'
     | '/voucher'
     | '/botakstore-admin/login'
+    | '/invoice/$orderId'
     | '/joki/$slug'
     | '/topup/$slug'
     | '/botakstore-admin/'
@@ -194,6 +204,7 @@ export interface FileRouteTypes {
     | '/profil'
     | '/voucher'
     | '/botakstore-admin/login'
+    | '/invoice/$orderId'
     | '/joki/$slug'
     | '/topup/$slug'
     | '/botakstore-admin'
@@ -212,6 +223,7 @@ export interface FileRouteTypes {
     | '/profil'
     | '/voucher'
     | '/botakstore-admin/login'
+    | '/invoice/$orderId'
     | '/joki/$slug'
     | '/topup/$slug'
     | '/botakstore-admin/'
@@ -231,6 +243,7 @@ export interface RootRouteChildren {
   ProfilRoute: typeof ProfilRoute
   VoucherRoute: typeof VoucherRoute
   BotakstoreAdminLoginRoute: typeof BotakstoreAdminLoginRoute
+  InvoiceOrderIdRoute: typeof InvoiceOrderIdRoute
   JokiSlugRoute: typeof JokiSlugRoute
   TopupSlugRoute: typeof TopupSlugRoute
   BotakstoreAdminIndexRoute: typeof BotakstoreAdminIndexRoute
@@ -324,6 +337,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BotakstoreAdminLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invoice/$orderId': {
+      id: '/invoice/$orderId'
+      path: '/invoice/$orderId'
+      fullPath: '/invoice/$orderId'
+      preLoaderRoute: typeof InvoiceOrderIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/joki/': {
       id: '/joki/'
       path: '/joki'
@@ -367,6 +387,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfilRoute: ProfilRoute,
   VoucherRoute: VoucherRoute,
   BotakstoreAdminLoginRoute: BotakstoreAdminLoginRoute,
+  InvoiceOrderIdRoute: InvoiceOrderIdRoute,
   JokiSlugRoute: JokiSlugRoute,
   TopupSlugRoute: TopupSlugRoute,
   BotakstoreAdminIndexRoute: BotakstoreAdminIndexRoute,

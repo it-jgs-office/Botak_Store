@@ -52,6 +52,17 @@ export interface PakasirPayment {
   is_sandbox: boolean;
 }
 
+export interface PakasirInvoice extends PakasirPayment {
+  order_type: "topup" | "joki";
+  description: string;
+  status: "pending" | "completed" | "canceled" | "failed";
+  created_at: string | null;
+  game_name: string | null;
+  game_user_id: string | null;
+  game_server_id: string | null;
+  quantity: number | null;
+}
+
 export interface PublicOrder {
   id: string;
   invoice: string;
@@ -291,6 +302,14 @@ export async function createPakasirPayment(input: CreatePakasirPaymentInput) {
       method: "POST",
       body: JSON.stringify(input),
     },
+  );
+  return response.data;
+}
+
+export async function fetchPakasirInvoice(orderId: string, refresh = false) {
+  const suffix = refresh ? "?refresh=1" : "";
+  const response = await apiRequest<{ data: PakasirInvoice }>(
+    `/payments/pakasir/${encodeURIComponent(orderId)}${suffix}`,
   );
   return response.data;
 }

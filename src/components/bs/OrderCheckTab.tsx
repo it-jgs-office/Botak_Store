@@ -93,6 +93,14 @@ export function OrderCheckTab() {
               Progres pengerjaan:{" "}
               <span className="font-semibold text-foreground">{order.progress}%</span>
             </p>
+            {(order.id.startsWith("BS-TOPUP-") || order.id.startsWith("BS-JOKI-")) && (
+              <a
+                href={`/invoice/${encodeURIComponent(order.id)}`}
+                className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-[#ffd84d] px-4 text-sm font-black text-[#17191d] transition hover:bg-[#f2c425]"
+              >
+                Lihat invoice & pembayaran
+              </a>
+            )}
           </Panel>
         )}
       </div>

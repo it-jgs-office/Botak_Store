@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Check,
@@ -8,22 +8,19 @@ import {
   LockKeyhole,
   Minus,
   Plus,
-  Search,
   ShieldCheck,
   Trophy,
   Wallet,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { rupiah } from "@/lib/format";
-import { createPakasirPayment, type PakasirPayment } from "@/lib/api";
+import { createPakasirPayment } from "@/lib/api";
 import { recordPakasirOrder } from "@/lib/actions";
 import { ACTIVE_PAKASIR_PAYMENT_METHODS, type PakasirMethod } from "@/lib/pakasir";
 import { useDB } from "@/lib/store";
 import { Field } from "./ui";
-import { PaymentInstruction } from "./PaymentInstruction";
 
 type JokiProduct = {
   id: string;
@@ -154,7 +151,6 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
     ? LOGIN_METHODS
     : [{ name: `${game.name} ID`, icon: gameImage }];
   const [productId, setProductId] = useState("");
-  const [query, setQuery] = useState("");
   const [starCounts, setStarCounts] = useState<Record<string, number>>({});
   const [loginMethod, setLoginMethod] = useState(loginMethods[0]?.name ?? "Login Akun");
   const [accountId, setAccountId] = useState("");
@@ -165,20 +161,13 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
   const [whatsapp, setWhatsapp] = useState("");
   const [note, setNote] = useState("");
   const [creatingPayment, setCreatingPayment] = useState(false);
-  const [paymentInstruction, setPaymentInstruction] = useState<PakasirPayment | null>(null);
 
   const selectedProduct = products.find((item) => item.id === productId);
-  const visibleProducts = useMemo(() => {
-    const keyword = query.trim().toLowerCase();
-    return keyword
-      ? products.filter((item) => item.name.toLowerCase().includes(keyword))
-      : products;
-  }, [products, query]);
   const groups = [...new Set(products.map((item) => item.group))];
   const starProducts = products.filter((item) => item.perStar);
   const [activeGroup, setActiveGroup] = useState("");
   const currentGroup = groups.includes(activeGroup) ? activeGroup : (groups[0] ?? "");
-  const activeProducts = visibleProducts.filter((item) => item.group === currentGroup);
+  const activeProducts = products.filter((item) => item.group === currentGroup);
   useEffect(() => {
     if (selectedProduct) {
       setActiveGroup(selectedProduct.group);
@@ -301,12 +290,7 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
         quantity: selectedProduct.perStar ? selectedStars : 1,
         note: note.trim() || undefined,
       });
-      if (payment.payment_url) {
-        window.location.assign(payment.payment_url);
-        return;
-      }
-      setPaymentInstruction(payment);
-      setCreatingPayment(false);
+      window.location.assign(`/invoice/${encodeURIComponent(payment.order_id)}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Pembayaran gagal dibuat.");
       setCreatingPayment(false);
@@ -376,36 +360,14 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
       <div className="mt-4 grid grid-cols-1 gap-4 pb-28 sm:space-y-0 lg:grid-cols-[minmax(0,1fr)_352px] lg:items-start lg:gap-8 lg:pb-0">
         <div className="min-w-0 space-y-4 sm:space-y-6">
           <JokiStep number="1" title="Pilih Layanan" description="Pilih rank atau paket joki yang kamu mau.">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8490a3]" />
-              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari layanan joki... (misal: epic, mythic)" className="h-11 rounded-2xl border-[#dce3ec] bg-[#f8fafc] pl-9 pr-9 text-base sm:h-12 sm:text-sm" />
-              {query && (
-                <button
-                  type="button"
-                  onClick={() => setQuery("")}
-                  aria-label="Hapus pencarian"
-                  title="Hapus pencarian"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8490a3] transition hover:text-[#202738]"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-            {query.trim() ? (
-              <div className="mt-3 flex items-center justify-between gap-2 text-xs text-[#68758b]">
-                <span className="min-w-0 flex-1 truncate">Hasil pencarian &ldquo;<b className="text-[#202738]">{query}</b>&rdquo;: <span className="font-black text-[#8a6800]">{visibleProducts.length}</span> produk ditemukan</span>
-                <button type="button" onClick={() => setQuery("")} className="shrink-0 font-black text-[#b03a2e] hover:underline">Reset</button>
-              </div>
-            ) : (
-              <p className="mt-3 text-xs text-[#8490a3]">{visibleProducts.length} layanan ditemukan</p>
-            )}
-            <div className="mt-5">
+            <p className="text-xs text-[#8490a3]">{products.length} layanan ditemukan</p>
+            <div className="mt-4">
               <div className="overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <div className="flex min-w-max gap-2">
                   {groups.map((group) => {
                     const meta = GROUP_META[group];
                     const groupProducts = products.filter((item) => item.group === group);
-                    const count = visibleProducts.filter((item) => item.group === group).length;
+                    const count = groupProducts.length;
                     const active = currentGroup === group;
                     return (
                       <button
@@ -446,11 +408,8 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
                   <p className="mt-1 text-xs text-[#68758b]">
                     {products.length === 0
                       ? `Layanan joki ${game.name} akan segera tersedia.`
-                      : <>Tidak ada produk yang cocok dengan pencarian &ldquo;{query}&rdquo;.</>}
+                      : "Belum ada produk pada kategori ini."}
                   </p>
-                  {products.length > 0 && (
-                    <button type="button" onClick={() => setQuery("")} className="mt-3 rounded-full bg-[#ffd84d] px-5 py-2 text-xs font-black text-[#17191d] transition hover:bg-[#f2c425]">Reset Pencarian</button>
-                  )}
                 </div>
               )}
             </div>
@@ -605,7 +564,7 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
             <SummaryRow label="Subtotal" value={rupiah(subtotal)} />
             <SummaryRow label="Biaya admin" value={selectedPayment ? rupiah(paymentFee) : "—"} />
             <div className="mt-4 flex items-center justify-between border-t border-[#e5eaf0] pt-4"><span className="font-black">Total Bayar</span><span className="text-xl font-black text-[#8a6800]">{rupiah(total)}</span></div>
-            <Button type="button" size="lg" onClick={submit} disabled={creatingPayment} className="mt-5 w-full bg-[#ffd84d] font-black text-[#17191d] hover:bg-[#f2c425]">{creatingPayment ? <LoaderCircle className="animate-spin" /> : <Trophy />}{creatingPayment ? "Membuka pembayaran..." : "Pesan Joki Sekarang"}</Button>
+            <Button type="button" size="lg" onClick={submit} disabled={creatingPayment} className="mt-5 w-full bg-[#ffd84d] font-black text-[#17191d] hover:bg-[#f2c425]">{creatingPayment ? <LoaderCircle className="animate-spin" /> : <Trophy />}{creatingPayment ? "Membuat invoice..." : "Pesan Joki Sekarang"}</Button>
             <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-[#718096]"><ShieldCheck className="h-4 w-4" /> Akun 100% aman</p>
           </div>
         </aside>
@@ -629,7 +588,6 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
           </Button>
         </div>
       </div>
-      {paymentInstruction && <PaymentInstruction payment={paymentInstruction} onClose={() => setPaymentInstruction(null)} />}
     </section>
   );
 }
