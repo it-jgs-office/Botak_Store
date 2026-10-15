@@ -26,6 +26,7 @@ function AdminLoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({ email: "", password: "" });
+  const [rememberBrowser, setRememberBrowser] = useState(true);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const captchaRef = useRef<ReCAPTCHA>(null);
 
@@ -41,7 +42,7 @@ function AdminLoginPage() {
       return;
     }
     setSubmitting(true);
-    const result = await loginAs(form.email.trim().toLowerCase(), form.password, captchaToken);
+    const result = await loginAs(form.email.trim().toLowerCase(), form.password, captchaToken, rememberBrowser);
     if (!result.ok) {
       setError(result.error);
       captchaRef.current?.reset();
@@ -127,6 +128,16 @@ function AdminLoginPage() {
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </span>
+                </label>
+
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-white/[.08] bg-white/[.035] px-3 py-2.5 text-left">
+                  <input
+                    type="checkbox"
+                    checked={rememberBrowser}
+                    onChange={(event) => setRememberBrowser(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-[#ffd84d]"
+                  />
+                  <span><span className="block text-xs font-black text-white/85">Simpan browser ini</span><span className="mt-0.5 block text-[11px] leading-4 text-white/45">Jangan pilih pada perangkat umum atau bersama.</span></span>
                 </label>
 
                 {error && (

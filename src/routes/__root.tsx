@@ -14,7 +14,7 @@ import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { hydrateStorefrontState } from "../lib/store";
-import { restoreSession } from "../lib/actions";
+import { endSession, restoreSession } from "../lib/actions";
 
 function NotFoundComponent() {
   return (
@@ -139,6 +139,9 @@ function RootComponent() {
   useEffect(() => {
     void hydrateStorefrontState().catch(() => undefined);
     void restoreSession();
+
+    window.addEventListener("botakstore:session-expired", endSession);
+    return () => window.removeEventListener("botakstore:session-expired", endSession);
   }, []);
   return (
     <QueryClientProvider client={queryClient}>

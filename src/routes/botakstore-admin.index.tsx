@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import jsQR from "jsqr";
 import {
   BadgePercent,
   Bell,
@@ -28,6 +29,17 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Logo, LogoutConfirmDialog } from "@/components/bs/PublicLayout";
 import { NativeSelect, ToneBadge, useHydrated, useSession } from "@/components/bs/ui";
 import {
@@ -54,19 +66,24 @@ import {
   rupiah,
   uid,
 } from "@/lib/format";
-import { hydrateAdminState, useDB } from "@/lib/store";
+import { hydrateAdminState, persistAdminCatalog, useDB } from "@/lib/store";
 import {
   ApiRequestError,
+  confirmJokiPayment,
+  fetchJokiPaymentProofs,
   fetchMobileLegendsProducts,
   syncDigiflazzProducts,
   uploadAdminImage,
+  validateJokiQrisTemplate,
   type DigiflazzProduct,
+  type JokiPaymentProof,
 } from "@/lib/api";
 import type {
   BannerSlide,
   Coupon,
   Game,
   JokiPackage,
+  Order,
   OrderStatus,
   RefundStatus,
   StoreSettings,
@@ -377,21 +394,64 @@ function OverviewPanel({ onOpen }: { onOpen: (view: AdminView) => void }) {
   );
 }
 
+function isTopupOrder(order: Order) {
+  return /^BS-TOPUP-/i.test(order.id) || /^top\s*up\b/i.test(order.detail.serviceName);
+}
+
 function OrdersPanel() {
   const db = useDB();
+  const [orderType, setOrderType] = useState<"topup" | "joki">("topup");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | OrderStatus>("all");
+  const [paymentProofs, setPaymentProofs] = useState<JokiPaymentProof[]>([]);
+  const [loadingProofs, setLoadingProofs] = useState(true);
+  const [confirmingOrder, setConfirmingOrder] = useState("");
+  const [proofMessage, setProofMessage] = useState("");
+  const [previewProof, setPreviewProof] = useState<JokiPaymentProof | null>(null);
+  const [proofToConfirm, setProofToConfirm] = useState<JokiPaymentProof | null>(null);
+  const loadPaymentProofs = useCallback(async () => {
+    setLoadingProofs(true);
+    try {
+      setPaymentProofs(await fetchJokiPaymentProofs());
+    } catch (error) {
+      setProofMessage(error instanceof Error ? error.message : "Daftar bukti pembayaran gagal dimuat.");
+    } finally {
+      setLoadingProofs(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (orderType === "joki") void loadPaymentProofs();
+  }, [loadPaymentProofs, orderType]);
+
+  const confirmPayment = async (orderId: string) => {
+    setConfirmingOrder(orderId);
+    setProofMessage("");
+    try {
+      const response = await confirmJokiPayment(orderId);
+      setProofMessage(response.message);
+      setPreviewProof(null);
+      setProofToConfirm(null);
+      await Promise.all([loadPaymentProofs(), hydrateAdminState()]);
+    } catch (error) {
+      setProofMessage(error instanceof Error ? error.message : "Pembayaran gagal dikonfirmasi.");
+    } finally {
+      setConfirmingOrder("");
+    }
+  };
+  const typeCount = db.orders.filter((order) => isTopupOrder(order) === (orderType === "topup")).length;
   const orders = useMemo(() => {
     const query = search.trim().toLowerCase();
     return db.orders.filter(
       (order) =>
+        isTopupOrder(order) === (orderType === "topup") &&
         (status === "all" || order.status === status) &&
         (!query ||
           order.id.toLowerCase().includes(query) ||
           order.customerName.toLowerCase().includes(query) ||
           order.detail.serviceName.toLowerCase().includes(query)),
     );
-  }, [db.orders, search, status]);
+  }, [db.orders, orderType, search, status]);
 
   const changeStatus = (orderId: string, current: OrderStatus, next: OrderStatus) => {
     changeOrderStatus(orderId, next, { by: "admin" });
@@ -399,6 +459,48 @@ function OrdersPanel() {
 
   return (
     <AdminCard title="Manajemen pesanan" subtitle="Pantau pembayaran, status, dan progres seluruh transaksi.">
+      <div className="mb-5 grid grid-cols-2 gap-2 rounded-2xl bg-[#f3f5f8] p-1.5" role="group" aria-label="Jenis pesanan">
+        {(["topup", "joki"] as const).map((type) => (
+          <button
+            key={type}
+            type="button"
+            aria-pressed={orderType === type}
+            onClick={() => { setOrderType(type); setStatus("all"); }}
+            className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-black transition sm:text-sm ${orderType === type ? "bg-[#ffd84d] text-[#17191d] shadow-sm" : "text-[#687180] hover:bg-white hover:text-[#172033]"}`}
+          >
+            {type === "topup" ? <Gem className="h-4 w-4 shrink-0" /> : <Gamepad2 className="h-4 w-4 shrink-0" />}
+            Pesanan {type === "topup" ? "Top Up" : "Joki"}
+            <span className={`rounded-full px-2 py-0.5 text-[10px] tabular-nums ${orderType === type ? "bg-[#17191d]/10" : "bg-white"}`}>
+              {db.orders.filter((order) => isTopupOrder(order) === (type === "topup")).length}
+            </span>
+          </button>
+        ))}
+      </div>
+      {orderType === "joki" && <section className="mb-5 rounded-2xl border border-[#ecd46e] bg-[#fffdf5] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><h3 className="font-black text-[#172033]">Konfirmasi pembayaran joki</h3><p className="mt-1 text-xs text-[#687180]">Bukti transfer yang diunggah pelanggan menunggu verifikasi.</p></div>
+          <Button type="button" variant="outline" size="sm" onClick={() => void loadPaymentProofs()} disabled={loadingProofs} className="border-[#ecd46e] bg-white text-xs font-black text-[#735500]">{loadingProofs ? "Memuat..." : "Muat ulang"}</Button>
+        </div>
+        {proofMessage && <p className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-bold text-[#596579]">{proofMessage}</p>}
+        {loadingProofs ? <p className="mt-4 text-sm text-[#687180]">Memuat bukti pembayaran...</p> : paymentProofs.length === 0 ? <p className="mt-4 text-sm text-[#687180]">Belum ada bukti pembayaran joki yang menunggu konfirmasi.</p> : (
+          <div className="mt-4 grid gap-3 xl:grid-cols-2">
+            {paymentProofs.map((proof) => (
+              <article key={proof.order_id} className="flex gap-3 rounded-xl border border-[#e5e8ed] bg-white p-3">
+                <button type="button" onClick={() => setPreviewProof(proof)} aria-label={`Lihat bukti pembayaran ${proof.order_id}`} className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-lg border border-[#e5e8ed] bg-[#f7f8fa] transition hover:border-[#d7aa00] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d7aa00]">
+                  <img src={proof.proof_url} alt={`Bukti pembayaran ${proof.order_id}`} className="h-full w-full object-cover" />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-black text-[#172033]">{proof.order_id}</p>
+                  <p className="mt-0.5 truncate text-xs font-bold text-[#596579]">{proof.customer_name} · {proof.customer_phone || "-"}</p>
+                  <p className="mt-1 truncate text-xs text-[#687180]">{proof.description}</p>
+                  <p className="mt-1 text-sm font-black text-[#8a6800]">{rupiah(proof.total_payment)}</p>
+                  <Button type="button" size="sm" onClick={() => setProofToConfirm(proof)} disabled={Boolean(confirmingOrder)} className="mt-2 h-8 bg-[#ffd84d] px-3 text-xs font-black text-[#17191d] hover:bg-[#f2c425]">{confirmingOrder === proof.order_id ? "Mengonfirmasi..." : "Konfirmasi bayar"}</Button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>}
       <div className="mb-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_220px]">
         <SearchField value={search} onChange={setSearch} placeholder="Cari invoice, pelanggan, atau layanan..." />
         <NativeSelect value={status} onChange={(event) => setStatus(event.target.value as "all" | OrderStatus)} className="h-10 border-[#dfe4ea] bg-white">
@@ -407,11 +509,12 @@ function OrdersPanel() {
         </NativeSelect>
       </div>
       <div className="overflow-x-auto rounded-xl border border-[#e6e9ee]">
-        <table className="w-full min-w-[980px] text-left text-sm">
+        <table className={`w-full text-left text-sm ${orderType === "joki" ? "min-w-[980px]" : "min-w-[820px]"}`}>
           <thead className="bg-[#f7f8fa] text-[10px] uppercase tracking-wider text-[#7c8592]">
-            <tr><th className="px-4 py-3">Pesanan</th><th className="px-4 py-3">Pelanggan</th><th className="px-4 py-3">Layanan</th><th className="px-4 py-3">Pembayaran</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Total</th><th className="px-4 py-3">Aksi</th></tr>
+            <tr><th className="px-4 py-3">Pesanan</th><th className="px-4 py-3">Pelanggan</th><th className="px-4 py-3">Layanan</th><th className="px-4 py-3">Pembayaran</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Total</th>{orderType === "joki" && <th className="px-4 py-3">Aksi</th>}</tr>
           </thead>
           <tbody className="divide-y divide-[#e9ecf0] bg-white">
+            {orders.length === 0 && <tr><td colSpan={orderType === "joki" ? 7 : 6} className="px-4 py-12 text-center text-sm text-[#687180]">Belum ada pesanan {orderType === "topup" ? "Top Up" : "Joki"} yang sesuai.</td></tr>}
             {orders.map((order) => (
                 <tr key={order.id} className="align-top hover:bg-[#fffdf5]">
                   <td className="px-4 py-3"><p className="font-black">{order.id}</p><p className="mt-1 text-xs text-[#89919d]">{fmtDateTime(order.createdAt)}</p></td>
@@ -420,7 +523,7 @@ function OrdersPanel() {
                   <td className="px-4 py-3"><ToneBadge tone={PAYMENT_STATUS_META[order.paymentStatus].tone}>{PAYMENT_STATUS_META[order.paymentStatus].label}</ToneBadge></td>
                   <td className="px-4 py-3"><ToneBadge tone={ORDER_STATUS_META[order.status].tone}>{ORDER_STATUS_META[order.status].label}</ToneBadge></td>
                   <td className="px-4 py-3 text-right font-black">{rupiah(order.price.total)}</td>
-                  <td className="px-4 py-3">
+                  {orderType === "joki" && <td className="px-4 py-3">
                     {order.status === "waiting_payment" ? (
                       <span className="text-xs font-bold text-[#9aa2ad]">Menunggu pembayaran</span>
                     ) : order.detail.serviceName.toLowerCase().startsWith("joki ") && order.paymentStatus === "paid" && !["completed", "cancelled"].includes(order.status) ? (
@@ -439,13 +542,36 @@ function OrdersPanel() {
                         {TRANSITIONS[order.status].map((next) => <option key={next} value={next}>{ORDER_STATUS_META[next].label}</option>)}
                       </NativeSelect>
                     ) : <span className="text-xs text-[#9aa2ad]">Tidak ada aksi</span>}
-                  </td>
+                  </td>}
                 </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="mt-3 text-xs text-[#89919d]">Menampilkan {orders.length} dari {db.orders.length} pesanan.</p>
+      <p className="mt-3 text-xs text-[#89919d]">Menampilkan {orders.length} dari {typeCount} pesanan {orderType === "topup" ? "Top Up" : "Joki"}.</p>
+      <Dialog open={Boolean(previewProof)} onOpenChange={(open) => { if (!open) setPreviewProof(null); }}>
+        <DialogContent className="max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] max-w-3xl overflow-y-auto rounded-2xl border-[#e5e8ed] bg-white p-4 sm:p-6">
+          <DialogHeader className="pr-7 text-left">
+            <DialogTitle className="text-lg font-black text-[#172033]">Bukti transfer</DialogTitle>
+            <DialogDescription className="break-all text-xs text-[#687180]">Invoice {previewProof?.order_id}</DialogDescription>
+          </DialogHeader>
+          {previewProof && <img src={previewProof.proof_url} alt={`Bukti transfer untuk invoice ${previewProof.order_id}`} className="mx-auto max-h-[72dvh] w-full rounded-xl bg-[#f7f8fa] object-contain" />}
+        </DialogContent>
+      </Dialog>
+      <AlertDialog open={Boolean(proofToConfirm)} onOpenChange={(open) => { if (!open && !confirmingOrder) setProofToConfirm(null); }}>
+        <AlertDialogContent className="w-[calc(100vw-1.5rem)] max-w-md rounded-2xl border-[#e5e8ed] bg-white p-5 sm:p-6">
+          <AlertDialogHeader className="text-left">
+            <AlertDialogTitle className="font-black text-[#172033]">Konfirmasi pembayaran joki?</AlertDialogTitle>
+            <AlertDialogDescription className="leading-6 text-[#687180]">
+              Pastikan bukti transfer untuk <span className="break-all font-bold text-[#172033]">{proofToConfirm?.order_id}</span> sudah sesuai. Setelah dikonfirmasi, pesanan langsung diproses dan foto bukti transfer akan dihapus permanen dari sistem.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-0">
+            <AlertDialogCancel disabled={Boolean(confirmingOrder)}>Kembali</AlertDialogCancel>
+            <AlertDialogAction disabled={Boolean(confirmingOrder)} onClick={() => { if (proofToConfirm) void confirmPayment(proofToConfirm.order_id); }} className="bg-[#ffd84d] font-black text-[#17191d] hover:bg-[#f2c425]">Konfirmasi dan hapus foto</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AdminCard>
   );
 }
@@ -1276,11 +1402,12 @@ function SettingsPanel() {
   const db = useDB();
   const [form, setForm] = useState<StoreSettings>(db.settings);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
     setForm(db.settings);
   }, [db.settings]);
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const storeName = form.storeName.trim();
     const whatsapp = form.whatsapp.replace(/\D/g, "");
@@ -1292,10 +1419,22 @@ function SettingsPanel() {
       setError("Nomor WhatsApp harus memakai format 08… atau 628….");
       return;
     }
-    updateSettings({ ...form, storeName, whatsapp });
-    setError("");
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 1800);
+    if (Boolean(form.jokiQrisImage) !== Boolean(form.jokiQrisPayload)) {
+      setError("Upload QRIS joki harus berhasil dibaca sebelum disimpan.");
+      return;
+    }
+    setSaving(true);
+    try {
+      updateSettings({ ...form, storeName, whatsapp });
+      await persistAdminCatalog();
+      setError("");
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1800);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Pengaturan gagal disimpan.");
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
@@ -1305,7 +1444,7 @@ function SettingsPanel() {
           <AdminField label="Nomor WhatsApp"><Input value={form.whatsapp} onChange={(event) => setForm({ ...form, whatsapp: event.target.value.replace(/\D/g, "") })} placeholder="081234567890" inputMode="tel" maxLength={14} className="h-11 bg-white" /></AdminField>
           <label className="flex items-center justify-between gap-4 rounded-xl border border-[#e4e8ed] bg-[#fafbfc] p-4"><span><span className="block text-sm font-black">Mode pemeliharaan</span><span className="mt-1 block text-xs text-[#7f8895]">Tampilkan halaman maintenance dan hentikan akses storefront sementara.</span></span><button type="button" onClick={() => setForm({ ...form, maintenance: !form.maintenance })} className={`relative h-7 w-12 shrink-0 rounded-full transition ${form.maintenance ? "bg-[#ffd84d]" : "bg-[#cdd3da]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${form.maintenance ? "left-6" : "left-1"}`} /></button></label>
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-600">{error}</p>}
-          <Button type="submit" className="bg-[#111722] font-black text-white hover:bg-[#232b39]">{saved ? <><RefreshCw /> Tersimpan</> : <><ShieldCheck /> Simpan pengaturan</>}</Button>
+          <Button type="submit" disabled={saving} className="bg-[#111722] font-black text-white hover:bg-[#232b39]">{saving ? <><RefreshCw className="animate-spin" /> Menyimpan...</> : saved ? <><RefreshCw /> Tersimpan</> : <><ShieldCheck /> Simpan pengaturan</>}</Button>
         </form>
       </AdminCard>
       <AdminCard title="Audit data frontend" subtitle="Pemetaan kesiapan integrasi backend.">
@@ -1318,8 +1457,153 @@ function SettingsPanel() {
           ].map((item) => <div key={item.label} className="flex items-center gap-2.5 rounded-lg bg-[#f7f8fa] px-3 py-2.5 font-bold text-[#596372]"><PackageCheck className={`h-4 w-4 ${item.ready ? "text-emerald-600" : "text-amber-500"}`} /><span className="min-w-0 flex-1">{item.label}</span><span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${item.ready ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{item.ready ? "Live" : "Migrasi"}</span></div>)}
         </div>
       </AdminCard>
+      <JokiQrisSettings value={form} onChange={setForm} />
     </div>
   );
+}
+
+function JokiQrisSettings({ value, onChange }: { value: StoreSettings; onChange: (settings: StoreSettings) => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+  const [draft, setDraft] = useState(value);
+  const [editing, setEditing] = useState(!value.jokiQrisPayload);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    if (dirty) return;
+    setDraft(value);
+    setEditing(!value.jokiQrisPayload);
+  }, [dirty, value]);
+
+  const upload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) {
+      setError("Gunakan gambar QRIS maksimal 5 MB.");
+      input.value = "";
+      return;
+    }
+
+    setDirty(true);
+    setUploading(true);
+    setError("");
+    try {
+      const payload = await decodeQrisImage(file);
+      const [uploaded, verified] = await Promise.all([
+        uploadAdminImage(file),
+        validateJokiQrisTemplate(payload),
+      ]);
+      setDraft({
+        ...draft,
+        jokiQrisImage: uploaded.url,
+        jokiQrisPayload: verified.data.payload,
+        jokiQrisMerchantName: verified.data.merchant_name,
+        jokiQrisReady: true,
+      });
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "QRIS tidak dapat dibaca.");
+    } finally {
+      setUploading(false);
+      input.value = "";
+    }
+  };
+
+  const clear = () => {
+    setDirty(true);
+    setDraft({ ...draft, jokiQrisImage: "", jokiQrisPayload: "", jokiQrisMerchantName: "", jokiQrisReady: false });
+    setError("");
+  };
+
+  const save = async () => {
+    if (!draft.jokiQrisImage || !draft.jokiQrisPayload) {
+      setError("Upload foto QRIS yang valid sebelum menyimpan.");
+      return;
+    }
+    setSaving(true);
+    try {
+      onChange(draft);
+      updateSettings(draft);
+      await persistAdminCatalog();
+      setDirty(false);
+      setEditing(false);
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "QRIS gagal disimpan.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const edit = () => {
+    setDraft(value);
+    setDirty(true);
+    setEditing(true);
+    setError("");
+  };
+
+  return (
+    <AdminCard className="xl:col-span-2" title="QRIS Dinamis Joki" subtitle="Upload QRIS statis merchant. Nominal akan dikunci sesuai total invoice joki.">
+      <div className="grid gap-4 md:grid-cols-[148px_minmax(0,1fr)] md:items-center">
+        <div className="grid aspect-square w-full max-w-[148px] place-items-center overflow-hidden rounded-2xl border border-dashed border-[#d7aa00] bg-[#fff9df] p-2">
+          {draft.jokiQrisImage ? <img src={draft.jokiQrisImage} alt="Template QRIS joki" className="h-full w-full object-contain" /> : <WalletCards className="h-8 w-8 text-[#a87c00]" />}
+        </div>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            {editing ? <>
+              <label className={`inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#111722] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#232b39] ${uploading ? "pointer-events-none opacity-60" : ""}`}>
+                <ImagePlus className="h-4 w-4" /> {uploading ? "Membaca QRIS..." : draft.jokiQrisImage ? "Ganti foto QRIS" : "Upload foto QRIS"}
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={upload} className="sr-only" disabled={uploading} />
+              </label>
+              {draft.jokiQrisImage && <Button type="button" variant="outline" onClick={clear} disabled={uploading}>Hapus</Button>}
+              <Button type="button" onClick={() => void save()} disabled={uploading || saving} className="bg-[#ffd84d] font-black text-[#17191d] hover:bg-[#f2c425]">{saving ? "Menyimpan..." : "Simpan QRIS"}</Button>
+            </> : <Button type="button" onClick={edit} variant="outline" className="font-black">Edit QRIS</Button>}
+            {value.jokiQrisPayload && !editing && <span className="rounded-full bg-emerald-50 px-2.5 py-1.5 text-[10px] font-black uppercase text-emerald-700">QRIS siap digunakan</span>}
+          </div>
+          <p className="mt-3 max-w-2xl text-xs leading-5 text-[#7b8491]">Gunakan QRIS statis asli. Sistem membacanya, memvalidasi merchant, lalu membuat QRIS dinamis dengan nominal pesanan otomatis. Simpan perubahan setelah pembacaan berhasil.</p>
+          {draft.jokiQrisMerchantName && <p className="mt-2 text-sm font-black text-[#202738]">Merchant: {draft.jokiQrisMerchantName}</p>}
+          {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-700">{error}</p>}
+        </div>
+      </div>
+    </AdminCard>
+  );
+}
+
+async function decodeQrisImage(file: File): Promise<string> {
+  type Barcode = { rawValue?: string };
+  type Detector = { detect: (source: ImageBitmap) => Promise<Barcode[]> };
+  const BarcodeDetector = (window as unknown as { BarcodeDetector?: new (options: { formats: string[] }) => Detector }).BarcodeDetector;
+  if (typeof createImageBitmap !== "function") throw new Error("Browser tidak mendukung pembacaan gambar QRIS.");
+
+  const image = await createImageBitmap(file);
+  try {
+    if (BarcodeDetector) {
+      try {
+        const result = await new BarcodeDetector({ formats: ["qr_code"] }).detect(image);
+        const payload = result.find((item) => item.rawValue?.startsWith("000201"))?.rawValue;
+        if (payload) return payload;
+      } catch {
+        // Lanjutkan ke decoder lokal bila API browser gagal membaca gambar.
+      }
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new Error("Gambar QRIS tidak dapat diproses.");
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    const decoded = jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: "attemptBoth" });
+    if (!decoded?.data.startsWith("000201")) {
+      throw new Error("QRIS tidak terbaca. Upload foto QRIS yang tajam dan tidak terpotong.");
+    }
+    return decoded.data;
+  } finally {
+    image.close();
+  }
 }
 
 function MetricCard({ label, value, hint, icon, tone }: { label: string; value: ReactNode; hint: string; icon: ReactNode; tone: "gold" | "blue" | "violet" | "red" }) {

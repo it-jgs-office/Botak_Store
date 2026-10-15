@@ -8,17 +8,27 @@ import {
   ClipboardCopy,
   Clock3,
   CreditCard,
-  Download,
   ExternalLink,
   FileText,
+  ImagePlus,
   LoaderCircle,
   RefreshCw,
   ShieldCheck,
+  Upload,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { PublicLayout } from "@/components/bs/PublicLayout";
-import { fetchPakasirInvoice, simulatePakasirPayment, type PakasirInvoice } from "@/lib/api";
+import { forgetPakasirOrder } from "@/lib/actions";
+import { ApiRequestError, cancelJokiInvoice, fetchPakasirInvoice, simulatePakasirPayment, uploadJokiPaymentProof, type PakasirInvoice } from "@/lib/api";
 import { rupiah } from "@/lib/format";
 import { pakasirMethod } from "@/lib/pakasir";
 
@@ -46,6 +56,64 @@ function formatTime(value: string | null | undefined) {
   }).format(date) + " WIB";
 }
 
+async function compressProofToWebp(file: File): Promise<File> {
+  let source: CanvasImageSource;
+  let width: number;
+  let height: number;
+  let release: () => void = () => {};
+
+  if (typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(file);
+    source = bitmap;
+    width = bitmap.width;
+    height = bitmap.height;
+    release = () => bitmap.close();
+  } else {
+    const imageUrl = URL.createObjectURL(file);
+    try {
+      const image = new Image();
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("Foto bukti pembayaran tidak dapat dibaca."));
+        image.src = imageUrl;
+      });
+      source = image;
+      width = image.naturalWidth;
+      height = image.naturalHeight;
+      release = () => URL.revokeObjectURL(imageUrl);
+    } catch (error) {
+      URL.revokeObjectURL(imageUrl);
+      throw error;
+    }
+  }
+
+  try {
+    if (!width || !height) throw new Error("Foto bukti pembayaran tidak dapat dibaca.");
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Browser tidak dapat memproses foto bukti pembayaran.");
+
+    for (const [maxEdge, quality] of [[2400, 0.86], [2000, 0.76], [1600, 0.7]] as const) {
+      const scale = Math.min(1, maxEdge / Math.max(width, height));
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      context.drawImage(source, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((result) => {
+          if (result?.type === "image/webp") resolve(result);
+          else reject(new Error("Browser tidak mendukung kompresi WebP. Perbarui browser lalu coba lagi."));
+        }, "image/webp", quality);
+      });
+      if (blob.size <= 5 * 1024 * 1024) {
+        return new File([blob], `${file.name.replace(/\.[^.]+$/, "")}.webp`, { type: "image/webp" });
+      }
+    }
+    throw new Error("Foto masih terlalu besar setelah dikompres. Pilih foto lain.");
+  } finally {
+    release();
+  }
+}
+
 function InvoicePage() {
   const { orderId } = Route.useParams();
   const [invoice, setInvoice] = useState<PakasirInvoice | null>(null);
@@ -54,6 +122,12 @@ function InvoicePage() {
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
   const [simulating, setSimulating] = useState(false);
+  const [canceling, setCanceling] = useState(false);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofPreview, setProofPreview] = useState("");
+  const [proofOpen, setProofOpen] = useState(false);
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const [compressingProof, setCompressingProof] = useState(false);
   const [error, setError] = useState("");
   const [clock, setClock] = useState(Date.now());
 
@@ -64,7 +138,13 @@ function InvoicePage() {
       setInvoice(data);
       setError("");
     } catch (cause) {
-      if (!silent) setError(cause instanceof Error ? cause.message : "Invoice gagal dimuat.");
+      if (!silent || (cause instanceof ApiRequestError && [404, 410].includes(cause.status))) {
+        setError(cause instanceof Error ? cause.message : "Invoice gagal dimuat.");
+      }
+      if (cause instanceof ApiRequestError && [404, 410].includes(cause.status)) {
+        setInvoice(null);
+        forgetPakasirOrder(orderId);
+      }
     } finally {
       setLoading(false);
       if (!silent) setChecking(false);
@@ -75,6 +155,7 @@ function InvoicePage() {
     setInvoice(null);
     setQrImage("");
     setQrError(false);
+    setProofFile(null);
     setLoading(true);
     void loadInvoice(false);
   }, [loadInvoice]);
@@ -82,11 +163,22 @@ function InvoicePage() {
   useEffect(() => {
     if (!invoice || invoice.status !== "pending") return;
     const interval = window.setInterval(() => {
-      setClock(Date.now());
       void loadInvoice(true, true);
     }, 15000);
     return () => window.clearInterval(interval);
   }, [invoice?.status, loadInvoice]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!invoice?.is_dynamic_qris || invoice.status !== "pending" || !invoice.expired_at || invoice.payment_proof_status) return;
+    const delay = new Date(invoice.expired_at).getTime() - Date.now();
+    const timeout = window.setTimeout(() => void loadInvoice(false, true), Math.max(0, delay) + 200);
+    return () => window.clearTimeout(timeout);
+  }, [invoice?.expired_at, invoice?.is_dynamic_qris, invoice?.payment_proof_status, loadInvoice]);
 
   useEffect(() => {
     if (!invoice?.qr_string) {
@@ -108,6 +200,10 @@ function InvoicePage() {
     });
     return () => { active = false; };
   }, [invoice?.qr_string]);
+
+  useEffect(() => () => {
+    if (proofPreview) URL.revokeObjectURL(proofPreview);
+  }, [proofPreview]);
 
   const copy = async (value: string, label: string) => {
     try {
@@ -131,12 +227,76 @@ function InvoicePage() {
     }
   };
 
+  const cancelInvoice = async () => {
+    if (!window.confirm("Batalkan dan hapus invoice ini? Pesanan yang belum dibayar akan ikut dihapus.")) return;
+    setCanceling(true);
+    try {
+      const response = await cancelJokiInvoice(orderId);
+      setInvoice(null);
+      forgetPakasirOrder(orderId);
+      setError(response.message);
+      toast.success(response.message);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Invoice gagal dibatalkan.");
+      await loadInvoice(false, true);
+    } finally {
+      setCanceling(false);
+    }
+  };
+
+  const uploadProof = async () => {
+    if (!proofFile) {
+      toast.error("Pilih foto bukti pembayaran terlebih dahulu.");
+      return;
+    }
+    setUploadingProof(true);
+    setCompressingProof(true);
+    try {
+      const compressed = await compressProofToWebp(proofFile);
+      setCompressingProof(false);
+      const response = await uploadJokiPaymentProof(orderId, compressed);
+      toast.success(response.message);
+      if (proofPreview) URL.revokeObjectURL(proofPreview);
+      setProofFile(null);
+      setProofPreview("");
+      setProofOpen(false);
+      await loadInvoice(false, true);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Bukti pembayaran gagal diunggah.");
+    } finally {
+      setCompressingProof(false);
+      setUploadingProof(false);
+    }
+  };
+
+  const selectProof = (file: File | null) => {
+    if (proofPreview) URL.revokeObjectURL(proofPreview);
+    if (file && (!file.type.match(/^image\/(jpeg|png|webp)$/) || file.size > 20 * 1024 * 1024)) {
+      setProofFile(null);
+      setProofPreview("");
+      toast.error("Gunakan foto JPG, PNG, atau WebP maksimal 20 MB.");
+      return;
+    }
+    setProofFile(file);
+    setProofPreview(file ? URL.createObjectURL(file) : "");
+  };
+
+  const changeProofModal = (open: boolean) => {
+    if (uploadingProof) return;
+    setProofOpen(open);
+    if (!open) selectProof(null);
+  };
+
   const method = invoice ? pakasirMethod(invoice.payment_method) : null;
   const expired = invoice?.expired_at
     ? new Date(invoice.expired_at).getTime() <= clock
     : false;
   const completed = invoice?.status === "completed";
   const canceled = invoice?.status === "canceled" || invoice?.status === "failed";
+  const awaitingConfirmation = invoice?.payment_proof_status === "submitted";
+  const remainingSeconds = invoice?.is_dynamic_qris && invoice.expired_at && !awaitingConfirmation
+    ? Math.max(0, Math.ceil((new Date(invoice.expired_at).getTime() - clock) / 1000))
+    : null;
 
   return (
     <PublicLayout banner="none" showFaq={false} footerGap="tight" serviceNavigation="orders">
@@ -154,7 +314,7 @@ function InvoicePage() {
           {invoice && (
             <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-bold ${completed ? "border-emerald-200 bg-emerald-50 text-emerald-800" : canceled || expired ? "border-red-200 bg-red-50 text-red-700" : "border-[#ecd46e] bg-[#fff8df] text-[#735500]"}`}>
               {completed ? <CircleCheck className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
-              {completed ? "Pembayaran berhasil" : canceled ? "Pembayaran dibatalkan" : expired ? "Waktu pembayaran berakhir" : "Menunggu pembayaran"}
+              {completed ? "Pembayaran berhasil" : canceled ? "Pembayaran dibatalkan" : expired ? "Waktu pembayaran berakhir" : awaitingConfirmation ? "Menunggu konfirmasi admin" : "Menunggu pembayaran"}
             </span>
           )}
         </div>
@@ -166,7 +326,7 @@ function InvoicePage() {
         ) : !invoice ? (
           <div className="mt-6 rounded-3xl border border-[#e4e7ec] bg-white px-5 py-12 text-center">
             <FileText className="mx-auto h-10 w-10 text-[#b1bac8]" />
-            <h2 className="mt-3 text-lg font-black text-[#101827]">Invoice belum dapat ditampilkan</h2>
+            <h2 className="mt-3 text-lg font-black text-[#101827]">Invoice tidak tersedia</h2>
             <p role="alert" className="mt-2 text-sm text-[#68758b]">{error || "Periksa kembali tautan invoice kamu."}</p>
             <div className="mt-5 flex flex-wrap justify-center gap-2">
               <Button type="button" onClick={() => void loadInvoice(false)} disabled={checking} className="bg-[#ffd84d] text-[#17191d] hover:bg-[#f2c425]"><RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} /> Coba lagi</Button>
@@ -203,7 +363,7 @@ function InvoicePage() {
 
               <section className="rounded-3xl border border-[#e4e7ec] bg-white p-4 shadow-[0_16px_45px_-38px_rgba(31,42,61,.45)] sm:p-6">
                 <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-[#fff1b3] text-[#8a6800]"><CreditCard className="h-5 w-5" /></span><div><h2 className="font-black text-[#101827]">Rincian pembayaran</h2><p className="text-xs text-[#68758b]">{method?.name ?? invoice.payment_method}</p></div></div>
-                <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-[#ecd46e] bg-[#fffbed] px-3 py-2.5 text-xs leading-5 text-[#715700]"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><span><strong className="font-black">Mode uji coba pembayaran.</strong> Pembayaran ini belum diproses secara riil.</span></div>
+                <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-[#ecd46e] bg-[#fffbed] px-3 py-2.5 text-xs leading-5 text-[#715700]"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><span>{invoice.is_dynamic_qris ? <><strong className="font-black">QRIS dinamis.</strong> Nominal QRIS dibuat otomatis sesuai total invoice.</> : <><strong className="font-black">Mode uji coba pembayaran.</strong> Pembayaran ini belum diproses secara riil.</>}</span></div>
                 <div className="mt-5 space-y-3 text-sm">
                   <MoneyRow label="Harga pesanan" value={rupiah(invoice.base_amount ?? invoice.amount)} />
                   {(invoice.discount ?? 0) > 0 && <MoneyRow label={`Diskon${invoice.coupon_code ? ` (${invoice.coupon_code})` : ""}`} value={`-${rupiah(invoice.discount ?? 0)}`} />}
@@ -214,13 +374,15 @@ function InvoicePage() {
             </div>
 
             <section className="order-first overflow-hidden rounded-3xl border border-[#ecd46e] bg-white shadow-[0_20px_48px_-34px_rgba(104,76,0,.3)] lg:order-last lg:sticky lg:top-24">
-              <div className="border-b border-[#ecd46e] bg-[#fff5ca] px-4 py-4 sm:px-5"><h2 className="flex items-center gap-2 font-black text-[#101827]"><ShieldCheck className="h-5 w-5 text-[#8a6800]" /> {completed ? "Pembayaran selesai" : "Selesaikan pembayaran"}</h2><p className="mt-1 text-xs text-[#68758b]">{method?.name ?? invoice.payment_method}{invoice.is_sandbox ? " · Sandbox" : ""}</p></div>
+              <div className="border-b border-[#ecd46e] bg-[#fff5ca] px-4 py-4 sm:px-5"><h2 className="flex items-center gap-2 font-black text-[#101827]"><ShieldCheck className="h-5 w-5 text-[#8a6800]" /> {completed ? "Pembayaran selesai" : awaitingConfirmation ? "Menunggu konfirmasi admin" : "Selesaikan pembayaran"}</h2><p className="mt-1 text-xs text-[#68758b]">{method?.name ?? invoice.payment_method}{invoice.is_dynamic_qris ? " · Nominal otomatis" : invoice.is_sandbox ? " · Sandbox" : ""}</p></div>
               <div className="p-4 sm:p-5">
                 <div className="mb-5 flex items-center justify-between gap-3 rounded-2xl bg-[#fff8df] px-4 py-3"><span className="text-sm font-semibold text-[#596579]">Total bayar</span><strong className="text-lg font-black tabular-nums text-[#735500]">{rupiah(invoice.total_payment ?? invoice.amount)}</strong></div>
                 {completed ? (
                   <div className="py-5 text-center"><span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-100 text-emerald-700"><Check className="h-8 w-8" /></span><p className="mt-4 font-black text-[#101827]">Pembayaran diterima</p><p className="mt-1 text-sm leading-6 text-[#68758b]">Pesanan akan diproses. Pantau progresnya melalui Cek Pesanan.</p></div>
                 ) : canceled || expired ? (
                   <div className="py-5 text-center"><Clock3 className="mx-auto h-10 w-10 text-red-500" /><p className="mt-4 font-black text-[#101827]">Transaksi tidak aktif</p><p className="mt-1 text-sm leading-6 text-[#68758b]">Buat pesanan baru untuk mendapatkan kode pembayaran yang aktif.</p></div>
+                ) : awaitingConfirmation ? (
+                  <div className="py-5 text-center"><span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#fff1b3] text-[#8a6800]"><Clock3 className="h-8 w-8" /></span><p className="mt-4 font-black text-[#101827]">Bukti pembayaran terkirim</p><p className="mt-1 text-sm leading-6 text-[#68758b]">Admin sedang memeriksa pembayaran kamu. Invoice akan otomatis berubah saat pembayaran dikonfirmasi.</p></div>
                 ) : invoice.qr_string ? (
                   <>
                     <p className="text-center text-sm font-bold text-[#101827]">Scan QRIS untuk membayar</p>
@@ -228,8 +390,10 @@ function InvoicePage() {
                       {qrImage ? <img src={qrImage} alt={`Kode QRIS untuk invoice ${invoice.order_id}`} width={256} height={256} className="h-full w-full object-contain" /> : qrError ? <p role="alert" className="px-4 text-center text-sm text-red-700">QRIS gagal ditampilkan. Salin kode QRIS di bawah untuk melanjutkan.</p> : <LoaderCircle className="h-6 w-6 animate-spin text-[#8a6800]" />}
                     </div>
                     <p className="mt-3 text-center text-xs leading-5 text-[#68758b]">Buka aplikasi bank atau e-wallet, pilih Scan QRIS, lalu bayar sesuai total invoice.</p>
-                    {qrImage && <a href={qrImage} download={`QRIS-${invoice.order_id}.png`} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#d7aa00] bg-white px-4 text-sm font-bold text-[#735500] transition hover:bg-[#fff8df]"><Download className="h-4 w-4" /> Unduh QRIS</a>}
                     {qrError && <Button type="button" variant="outline" onClick={() => void copy(invoice.qr_string!, "Kode QRIS")} className="mt-4 min-h-11 w-full"><ClipboardCopy className="h-4 w-4" /> Salin kode QRIS</Button>}
+                    {invoice.order_type === "joki" && !expired && (
+                      <Button type="button" onClick={() => setProofOpen(true)} className="mt-3 min-h-11 w-full bg-[#ffd84d] text-sm font-black text-[#17191d] shadow-[0_10px_24px_-16px_rgba(138,104,0,.8)] hover:bg-[#f2c425]"><CircleCheck className="h-4 w-4" /> Pembayaran Sudah Selesai</Button>
+                    )}
                   </>
                 ) : invoice.va_number ? (
                   <>
@@ -243,20 +407,57 @@ function InvoicePage() {
                   <p className="text-sm leading-6 text-[#68758b]">Instruksi pembayaran belum tersedia. Muat ulang status pembayaran.</p>
                 )}
 
-                {!completed && !canceled && invoice.expired_at && <p className={`mt-4 flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs leading-5 ${expired ? "bg-red-50 text-red-700" : "bg-[#f7f8fa] text-[#596579]"}`}><Clock3 className="mt-0.5 h-4 w-4 shrink-0" /> Batas pembayaran: {formatTime(invoice.expired_at)}</p>}
-                {invoice.is_sandbox && !completed && !canceled && !expired && (
+                {!completed && !canceled && !awaitingConfirmation && invoice.expired_at && <p className={`mt-4 flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs leading-5 ${expired ? "bg-red-50 text-red-700" : "bg-[#f7f8fa] text-[#596579]"}`}><Clock3 className="mt-0.5 h-4 w-4 shrink-0" /> {remainingSeconds !== null ? `Sisa waktu transfer ${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}. Invoice otomatis dihapus jika bukti belum dikirim.` : `Batas pembayaran: ${formatTime(invoice.expired_at)}`}</p>}
+                {invoice.is_dynamic_qris && !completed && !canceled && !awaitingConfirmation && !expired && (
+                  <Button type="button" variant="outline" onClick={() => void cancelInvoice()} disabled={canceling || uploadingProof} className="mt-3 min-h-11 w-full border-red-200 font-bold text-red-700 hover:bg-red-50 hover:text-red-800">
+                    {canceling ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />} Batalkan invoice
+                  </Button>
+                )}
+                {invoice.is_sandbox && !invoice.is_dynamic_qris && !completed && !canceled && !expired && (
                   <Button type="button" onClick={() => void simulatePayment()} disabled={simulating} className="mt-4 min-h-11 w-full bg-[#ffd84d] font-black text-[#17191d] hover:bg-[#f2c425]">
                     {simulating ? <LoaderCircle className="animate-spin" /> : <Check />} {simulating ? "Memproses simulasi..." : "Simulasikan pembayaran berhasil"}
                   </Button>
                 )}
                 {error && <p role="alert" className="mt-4 text-xs text-red-700">{error}</p>}
-                <Button type="button" variant="outline" onClick={() => void loadInvoice(true)} disabled={checking} className="mt-4 min-h-11 w-full"><RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} /> {checking ? "Memeriksa..." : "Perbarui status"}</Button>
                 <p className="mt-3 text-center text-xs leading-5 text-[#7b8798]">Status diperbarui otomatis setiap 15 detik selama menunggu pembayaran.</p>
               </div>
             </section>
           </div>
         )}
       </div>
+      {invoice && (
+        <Dialog open={proofOpen} onOpenChange={changeProofModal}>
+          <DialogContent className="bottom-3 left-3 right-3 top-auto w-auto max-w-none translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl sm:bottom-auto sm:left-[50%] sm:right-auto sm:top-[50%] sm:w-full sm:max-w-md sm:translate-x-[-50%] sm:translate-y-[-50%]">
+            <DialogHeader className="border-b border-[#ecd46e] bg-[#fff5ca] px-5 pb-4 pt-5 text-left sm:px-6 sm:pb-5 sm:pt-6">
+              <span className="mb-2 grid h-10 w-10 place-items-center rounded-xl bg-[#ffd84d] text-[#17191d]"><Upload className="h-5 w-5" /></span>
+              <DialogTitle className="pr-8 text-xl font-black text-[#101827]">Unggah bukti pembayaran</DialogTitle>
+              <DialogDescription className="text-xs leading-5 text-[#68758b]">Pastikan nominal pada bukti sama dengan total invoice <strong className="text-[#202738]">{rupiah(invoice.total_payment ?? invoice.amount)}</strong>.</DialogDescription>
+            </DialogHeader>
+            <div className="max-h-[65vh] overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+              <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-[#f7f8fa] px-3 py-2.5">
+                <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-[#8390a3]">Nomor invoice</p><p className="mt-0.5 truncate font-mono text-xs font-black text-[#202738]">{invoice.order_id}</p></div>
+                <button type="button" onClick={() => void copy(invoice.order_id, "Nomor invoice")} className="shrink-0 rounded-lg border border-[#dce3ec] bg-white px-2.5 py-2 text-xs font-bold text-[#596579]">Salin</button>
+              </div>
+              <label className="block cursor-pointer rounded-2xl border-2 border-dashed border-[#ddc04b] bg-[#fffdf5] p-3 text-center transition hover:bg-[#fff8df] focus-within:ring-2 focus-within:ring-[#ffd84d]/50">
+                <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => selectProof(event.target.files?.[0] ?? null)} className="sr-only" />
+                {proofPreview ? (
+                  <img src={proofPreview} alt="Pratinjau bukti pembayaran" className="mx-auto max-h-52 w-full rounded-xl object-contain" />
+                ) : (
+                  <div className="grid min-h-36 place-items-center px-3 py-5">
+                    <span><span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#ffd84d] text-[#17191d]"><ImagePlus className="h-6 w-6" /></span><strong className="mt-3 block text-sm text-[#101827]">Pilih foto bukti transfer</strong><span className="mt-1 block text-xs leading-5 text-[#7b8798]">JPG, PNG, atau WebP · maksimal 20 MB · otomatis dikompres ke WebP</span></span>
+                  </div>
+                )}
+              </label>
+              {proofFile && <div className="mt-3 flex items-center justify-between gap-3 text-xs"><span className="min-w-0 truncate font-bold text-[#596579]">{proofFile.name}</span><button type="button" onClick={() => selectProof(null)} className="shrink-0 font-black text-red-600">Hapus</button></div>}
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                <Button type="button" variant="outline" onClick={() => changeProofModal(false)} disabled={uploadingProof} className="min-h-11 order-2 font-bold sm:order-1">Batal</Button>
+                <Button type="button" onClick={() => void uploadProof()} disabled={!proofFile || uploadingProof} className="min-h-11 order-1 bg-[#ffd84d] font-black text-[#17191d] hover:bg-[#f2c425] sm:order-2">{uploadingProof ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}{compressingProof ? "Mengompres..." : uploadingProof ? "Mengunggah..." : "Kirim bukti"}</Button>
+              </div>
+              <p className="mt-3 text-center text-[11px] leading-4 text-[#7b8798]">Setelah dikirim, status berubah menjadi menunggu konfirmasi admin.</p>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </PublicLayout>
   );
 }

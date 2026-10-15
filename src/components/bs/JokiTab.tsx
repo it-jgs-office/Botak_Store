@@ -17,10 +17,10 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { rupiah } from "@/lib/format";
-import { createPakasirPayment } from "@/lib/api";
+import { createJokiQrisPayment } from "@/lib/api";
 import { recordPakasirOrder } from "@/lib/actions";
 import { quoteCoupon } from "@/lib/coupon";
-import { ACTIVE_PAKASIR_PAYMENT_METHODS, type PakasirMethod } from "@/lib/pakasir";
+import { pakasirMethod, type PakasirMethod } from "@/lib/pakasir";
 import { useDB } from "@/lib/store";
 import { Field } from "./ui";
 
@@ -145,7 +145,7 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
     ?? fallbackGame;
   const gameImage = game.listImage || DEFAULT_GAME_IMAGES[game.slug] || DEFAULT_GAME_IMAGES["mobile-legends"];
   const gameCover = game.coverImage || gameImage;
-  const jokiGames = db.games.filter((item) => item.status === "active" && item.slug === "mobile-legends");
+  const jokiGames = db.games.filter((item) => ["mobile-legends", "valorant", "pubg", "pubg-mobile", "efootball"].includes(item.slug));
   const products: JokiProduct[] = game.slug === "mobile-legends"
     ? db.jokiPackages
         .filter((item) => item.gameSlug === "mobile-legends" && item.status === "active")
@@ -161,7 +161,7 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
   const [password, setPassword] = useState("");
   const [nickname, setNickname] = useState("");
   const [heroes, setHeroes] = useState("");
-  const [paymentId, setPaymentId] = useState<PakasirMethod>("qris");
+  const paymentId: PakasirMethod = "qris";
   const [whatsapp, setWhatsapp] = useState("");
   const [couponCode, setCouponCode] = useState("");
   const [note, setNote] = useState("");
@@ -195,8 +195,7 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
     });
   const selectedStars =
     selectedProduct?.perStar ? (starCounts[selectedProduct.id] ?? 0) : 0;
-  const paymentMethods = ACTIVE_PAKASIR_PAYMENT_METHODS;
-  const selectedPayment = paymentMethods.find((item) => item.id === paymentId);
+  const selectedPayment = pakasirMethod(paymentId);
   const subtotal = !selectedProduct
     ? 0
     : selectedProduct.perStar
@@ -207,8 +206,7 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
     [couponCode, db.coupons, subtotal],
   );
   const discount = couponQuote.discount;
-  const paymentFee = 0;
-  const total = Math.max(0, subtotal - discount + paymentFee);
+  const total = Math.max(0, subtotal - discount);
   const canSubmit = !!selectedProduct
     && accountId.trim().length > 0
     && password.trim().length > 0
@@ -229,12 +227,15 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3 lg:grid-cols-4">
           {jokiGames.map((item) => {
             const cardClassName = "joki-game-card group relative aspect-[416/600] bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7aa00]";
+            const isMaintenance = item.slug !== "mobile-legends";
             const cardImage = <img src={item.listImage || DEFAULT_GAME_IMAGES[item.slug]} alt={item.name} className="joki-game-card-visual h-full w-full object-cover" />;
+            const maintenanceBadge = isMaintenance ? <span className="absolute inset-x-1.5 bottom-1.5 rounded-md bg-[#101827]/80 px-1 py-1 text-center text-[8px] font-black uppercase tracking-wide text-white backdrop-blur-sm sm:inset-x-2 sm:bottom-2 sm:text-[9px]">Maintenance</span> : null;
 
             if (item.id === "g-pubgm" || item.slug === "pubg" || item.slug === "pubg-mobile") {
               return (
                 <a key={item.id} href="/joki/pubg" aria-label="Pilih Joki PUBG Mobile" className={cardClassName}>
                   {cardImage}
+                  {maintenanceBadge}
                 </a>
               );
             }
@@ -248,6 +249,7 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
                 className={cardClassName}
               >
                 {cardImage}
+                {maintenanceBadge}
               </Link>
             );
           })}
@@ -275,7 +277,7 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
     }
     setCreatingPayment(true);
     try {
-      const payment = await createPakasirPayment({
+      const payment = await createJokiQrisPayment({
         order_type: "joki",
         item_id: selectedProduct.id,
         description: `Joki ${game.name} - ${selectedProduct.name}`,
@@ -546,39 +548,14 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
             </div>
           </JokiStep>
 
-          <JokiStep number="3" title="Pembayaran" description="Harga di tiap metode sudah termasuk biaya admin.">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
-              {paymentMethods.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  disabled={!selectedProduct}
-                  onClick={() => setPaymentId(item.id)}
-                  className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50 sm:gap-3 sm:rounded-2xl sm:p-3 ${paymentId === item.id ? "border-[#d7aa00] bg-[#fff8df]" : "border-[#dce3ec] bg-white hover:border-[#e4bd22]"}`}
-                >
-                  <span className="grid h-9 w-14 shrink-0 place-items-center overflow-hidden rounded-lg border border-[#e5eaf0] bg-white sm:h-10 sm:w-16 sm:rounded-xl">
-                    {item.icon.startsWith("/") ? (
-                      <img src={item.icon} alt={item.name} loading="lazy" className="h-full w-full object-contain p-1" />
-                    ) : (
-                      <span className="flex h-full w-full items-center justify-center rounded-lg bg-[#17191d] text-[10px] font-black leading-tight text-[#ffd84d] sm:rounded-xl sm:text-[11px]">{item.icon}</span>
-                    )}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <strong className="block text-[13px] font-black leading-tight text-[#202738] sm:text-sm">{item.name}</strong>
-                    <span className="hidden text-[11px] leading-snug text-[#718096] sm:block">{!selectedProduct ? "Pilih layanan dulu" : item.description}</span>
-                  </span>
-                  {paymentId === item.id && (
-                    <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-[#d7aa00] bg-[#ffd84d]">
-                      <Check className="h-3 w-3 text-[#17191d]" />
-                    </span>
-                  )}
-                </button>
-              ))}
+          <JokiStep number="3" title="Pembayaran" description="QRIS dinamis otomatis memuat nominal sesuai total pesanan.">
+            <div className="flex items-center gap-3 rounded-2xl border border-[#d7aa00] bg-[#fff8df] p-3 sm:p-4">
+              <span className="grid h-10 w-14 shrink-0 place-items-center overflow-hidden rounded-xl border border-[#ecd46e] bg-white sm:h-12 sm:w-16">
+                <img src={selectedPayment.icon} alt="QRIS" loading="lazy" className="h-full w-full object-contain p-1.5" />
+              </span>
+              <span className="min-w-0 flex-1"><strong className="block text-sm font-black text-[#202738] sm:text-base">QRIS ALL PAYMENT</strong><span className="mt-0.5 block text-[11px] leading-snug text-[#718096] sm:text-xs">Scan dari e-wallet atau mobile banking. Nominal terisi otomatis.</span></span>
+              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-[#d7aa00] bg-[#ffd84d]"><Check className="h-3 w-3 text-[#17191d]" /></span>
             </div>
-              <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-[#ecd46e] bg-[#fffbed] px-3 py-2.5 text-xs leading-5 text-[#715700]">
-                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-                <span><strong className="font-black">Mode uji coba pembayaran.</strong> Pembayaran belum diproses secara riil.</span>
-              </div>
           </JokiStep>
 
           <JokiStep number="4" title="Voucher" description="Masukkan kode promo jika kamu punya.">
@@ -620,7 +597,7 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
             <SummaryRow label="Pembayaran" value={selectedPayment?.name ?? "Belum dipilih"} />
             <SummaryRow label="Subtotal" value={rupiah(subtotal)} />
             {discount > 0 && <SummaryRow label={`Diskon (${couponQuote.coupon?.code})`} value={`-${rupiah(discount)}`} />}
-            <SummaryRow label="Biaya admin" value={selectedPayment ? rupiah(paymentFee) : "—"} />
+            <SummaryRow label="Biaya layanan" value={selectedPayment ? "Kode unik saat invoice dibuat" : "—"} />
             <div className="mt-4 flex items-center justify-between border-t border-[#e5eaf0] pt-4"><span className="font-black">Total Bayar</span><span className="text-xl font-black text-[#8a6800]">{rupiah(total)}</span></div>
             <Button type="button" size="lg" onClick={submit} disabled={creatingPayment || db.settings.maintenance} className="mt-5 w-full bg-[#ffd84d] font-black text-[#17191d] hover:bg-[#f2c425]">{creatingPayment ? <LoaderCircle className="animate-spin" /> : <Trophy />}{creatingPayment ? "Membuat invoice..." : "Pesan Joki Sekarang"}</Button>
             <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-[#718096]"><ShieldCheck className="h-4 w-4" /> Akun 100% aman</p>

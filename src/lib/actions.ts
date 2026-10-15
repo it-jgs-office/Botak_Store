@@ -62,12 +62,13 @@ export async function loginAs(
   email: string,
   password: string,
   recaptchaToken?: string,
+  rememberBrowser = false,
 ): Promise<Result<Role>> {
   try {
     if (!recaptchaToken) {
       return fail("Mohon centang verifikasi captcha terlebih dahulu.");
     }
-    const response = await apiLogin(email, password, recaptchaToken);
+    const response = await apiLogin(email, password, recaptchaToken, rememberBrowser);
     applyApiUser(response.user);
     return { ok: true, data: response.user.role };
   } catch (error) {
@@ -76,6 +77,10 @@ export async function loginAs(
 }
 export function logout() {
   void apiLogout();
+  endSession();
+}
+
+export function endSession() {
   clearApiSession();
   updateStoredData(() => ({ session: null }));
 }
@@ -87,8 +92,7 @@ export async function restoreSession() {
     applyApiUser(response.user);
     if (response.user.role === "customer") await hydrateCustomerData();
   } catch {
-    clearApiSession();
-    updateStoredData(() => ({ session: null }));
+    endSession();
   }
 }
 export async function registerCustomer(
@@ -490,6 +494,15 @@ export function recordPakasirOrder(input: {
     }, ...state.logs],
   }));
   return { ok: true, data: input.orderId };
+}
+
+export function forgetPakasirOrder(orderId: string) {
+  if (getDB().session?.role === "admin") return;
+  updateStoredData((state) => ({
+    orders: state.orders.filter((order) => order.id !== orderId),
+    payments: state.payments.filter((payment) => payment.orderId !== orderId),
+    logs: state.logs.filter((log) => log.orderId !== orderId),
+  }));
 }
 
 export function simulatePayment(orderId: string, outcome: "paid" | "failed" | "expired"): Result {

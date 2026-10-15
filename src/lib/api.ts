@@ -1,6 +1,6 @@
 import type { OrderStatus, PaymentStatus, Role } from "./types";
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:8000/api").replace(/\/$/, "");
+const API_BASE_URL = (import.meta.env.VITE_API_URL ?? "https://api.botakstore.id/api").replace(/\/$/, "");
 const TOKEN_KEY = "botakstore_jwt";
 const AUTH_USER_KEY = "botakstore_auth_user";
 
@@ -58,6 +58,7 @@ export interface PakasirPayment {
   va_number?: string | null;
   payment_url?: string;
   is_sandbox: boolean;
+  is_dynamic_qris?: boolean;
   base_amount?: number;
   discount?: number;
   coupon_code?: string | null;
@@ -72,6 +73,21 @@ export interface PakasirInvoice extends PakasirPayment {
   game_user_id: string | null;
   game_server_id: string | null;
   quantity: number | null;
+  payment_proof_status?: "submitted" | "confirmed" | null;
+  payment_proof_uploaded_at?: string | null;
+}
+
+export interface JokiPaymentProof {
+  order_id: string;
+  txn_id: string | null;
+  description: string;
+  amount: number;
+  fee: number;
+  total_payment: number;
+  customer_name: string;
+  customer_phone: string;
+  proof_url: string;
+  uploaded_at: string;
 }
 
 export interface PublicOrder {
@@ -116,11 +132,13 @@ interface AuthResponse {
 
 export class ApiRequestError extends Error {
   retryAfter: number;
+  status: number;
 
-  constructor(message: string, retryAfter = 0) {
+  constructor(message: string, retryAfter = 0, status = 0) {
     super(message);
     this.name = "ApiRequestError";
     this.retryAfter = retryAfter;
+    this.status = status;
   }
 }
 
@@ -171,12 +189,20 @@ async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   } & T;
 
   if (!response.ok) {
+    if (response.status === 401) {
+      clearApiSession();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("botakstore:session-expired"));
+      }
+    }
+
     const firstValidationError = payload.errors
       ? Object.values(payload.errors).flat().find(Boolean)
       : undefined;
     throw new ApiRequestError(
       firstValidationError ?? payload.message ?? "Permintaan ke server gagal.",
       Number(payload.retry_after ?? 0),
+      response.status,
     );
   }
 
@@ -189,10 +215,10 @@ function persistAuth(response: AuthResponse) {
   return response;
 }
 
-export async function apiLogin(email: string, password: string, recaptchaToken: string) {
+export async function apiLogin(email: string, password: string, recaptchaToken: string, rememberBrowser = false) {
   const response = await apiRequest<AuthResponse>("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password, recaptcha_token: recaptchaToken }),
+    body: JSON.stringify({ email, password, recaptcha_token: recaptchaToken, remember_browser: rememberBrowser }),
   });
   return persistAuth(response);
 }
@@ -317,6 +343,16 @@ export async function uploadAdminImage(file: File) {
   });
 }
 
+export async function validateJokiQrisTemplate(payload: string) {
+  return apiRequest<{ data: { payload: string; merchant_name: string; merchant_city: string } }>(
+    "/admin/joki-qris/validate",
+    {
+      method: "POST",
+      body: JSON.stringify({ payload }),
+    },
+  );
+}
+
 export async function checkMobileLegendsAccount(userId: string, serverId: string) {
   const response = await apiRequest<{ data: MobileLegendsAccount }>(
     "/game/mobile-legends/check",
@@ -354,6 +390,17 @@ export async function createPakasirPayment(input: CreatePakasirPaymentInput) {
   return response.data;
 }
 
+export async function createJokiQrisPayment(input: CreatePakasirPaymentInput) {
+  const response = await apiRequest<{ data: PakasirPayment }>(
+    "/payments/joki/qris/create",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+  return response.data;
+}
+
 export async function fetchPakasirInvoice(orderId: string, refresh = false) {
   const suffix = refresh ? "?refresh=1" : "";
   const response = await apiRequest<{ data: PakasirInvoice }>(
@@ -365,6 +412,34 @@ export async function fetchPakasirInvoice(orderId: string, refresh = false) {
 export async function simulatePakasirPayment(orderId: string) {
   return apiRequest<{ message: string }>(
     `/payments/pakasir/${encodeURIComponent(orderId)}/simulate`,
+    { method: "POST" },
+  );
+}
+
+export async function uploadJokiPaymentProof(orderId: string, proof: File) {
+  const body = new FormData();
+  body.append("proof", proof);
+  return apiRequest<{ message: string }>(
+    `/payments/joki/${encodeURIComponent(orderId)}/proof`,
+    { method: "POST", body },
+  );
+}
+
+export async function cancelJokiInvoice(orderId: string) {
+  return apiRequest<{ message: string }>(
+    `/payments/joki/${encodeURIComponent(orderId)}/cancel`,
+    { method: "POST" },
+  );
+}
+
+export async function fetchJokiPaymentProofs() {
+  const response = await apiRequest<{ data: JokiPaymentProof[] }>("/admin/joki/payment-proofs");
+  return response.data;
+}
+
+export async function confirmJokiPayment(orderId: string) {
+  return apiRequest<{ message: string }>(
+    `/admin/joki/${encodeURIComponent(orderId)}/confirm-payment`,
     { method: "POST" },
   );
 }

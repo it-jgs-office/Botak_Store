@@ -56,6 +56,7 @@ let db: DB = SERVER_DB;
 let loaded = false;
 let catalogSyncTimer: ReturnType<typeof setTimeout> | undefined;
 let operationSyncTimer: ReturnType<typeof setTimeout> | undefined;
+let catalogSyncInFlight: Promise<void> = Promise.resolve();
 const listeners = new Set<() => void>();
 
 function normalizeMlbbData(source: DB): DB {
@@ -131,12 +132,22 @@ function operationState(source: DB): ApiOperationState {
   };
 }
 
+function writeAdminCatalog(snapshot: ApiStoreState): Promise<void> {
+  const write = catalogSyncInFlight
+    .catch(() => undefined)
+    .then(() => saveAdminState(snapshot))
+    .then(() => undefined);
+  catalogSyncInFlight = write;
+  return write;
+}
+
 function queueApiSync(changedKeys: readonly (keyof DB)[]) {
   if (getStoredAuthUser()?.role !== "admin") return;
   if (changedKeys.some((key) => CATALOG_SYNC_KEYS.includes(key as (typeof CATALOG_SYNC_KEYS)[number]))) {
     if (catalogSyncTimer) clearTimeout(catalogSyncTimer);
     catalogSyncTimer = setTimeout(() => {
-      void saveAdminState(apiState(db)).catch(() => undefined);
+      catalogSyncTimer = undefined;
+      void writeAdminCatalog(apiState(db)).catch(() => undefined);
     }, 400);
   }
   if (changedKeys.some((key) => OPERATION_SYNC_KEYS.includes(key as (typeof OPERATION_SYNC_KEYS)[number]))) {
@@ -145,6 +156,17 @@ function queueApiSync(changedKeys: readonly (keyof DB)[]) {
       void saveAdminOperations(operationState(db)).catch(() => undefined);
     }, 400);
   }
+}
+
+/** Simpan katalog admin langsung ke server, dipakai untuk aksi yang tidak boleh hilang saat halaman di-refresh. */
+export async function persistAdminCatalog() {
+  ensureLoaded();
+  if (getStoredAuthUser()?.role !== "admin") throw new Error("Sesi admin tidak ditemukan. Silakan masuk kembali.");
+  if (catalogSyncTimer) {
+    clearTimeout(catalogSyncTimer);
+    catalogSyncTimer = undefined;
+  }
+  await writeAdminCatalog(apiState(db));
 }
 
 function hasLS() {
@@ -309,7 +331,7 @@ export async function hydrateAdminState() {
     setStoredData("users", db.users);
     OPERATION_SYNC_KEYS.forEach((key) => setStoredData(key, db[key] as never));
     listeners.forEach((listener) => listener());
-    await saveAdminState(apiState(db));
+    await writeAdminCatalog(apiState(db));
     if (!operationsResponse.data) await saveAdminOperations(operationState(db));
     return;
   }
@@ -329,7 +351,9 @@ export async function hydrateAdminState() {
 
 export async function hydrateStorefrontState() {
   ensureLoaded();
+  if (getStoredAuthUser()?.role === "admin") return;
   const response = await fetchStoreState<PublicStoreState>();
+  if (getStoredAuthUser()?.role === "admin") return;
   if (!response.data || !Object.keys(response.data).length) return;
 
   db = normalizeMlbbData({ ...db, ...response.data });

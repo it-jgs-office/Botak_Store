@@ -273,6 +273,10 @@ export interface StoreSettings {
   maintenance: boolean;
   topupMarkupPercent: number;
   topupMarkupFlat: number;
+  jokiQrisImage: string;
+  jokiQrisPayload: string;
+  jokiQrisMerchantName: string;
+  jokiQrisReady?: boolean;
 }
 
 export interface Session {
