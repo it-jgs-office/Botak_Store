@@ -18,7 +18,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PublicLayout } from "@/components/bs/PublicLayout";
-import { fetchPakasirInvoice, type PakasirInvoice } from "@/lib/api";
+import { fetchPakasirInvoice, simulatePakasirPayment, type PakasirInvoice } from "@/lib/api";
 import { rupiah } from "@/lib/format";
 import { pakasirMethod } from "@/lib/pakasir";
 
@@ -53,6 +53,7 @@ function InvoicePage() {
   const [qrError, setQrError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
+  const [simulating, setSimulating] = useState(false);
   const [error, setError] = useState("");
   const [clock, setClock] = useState(Date.now());
 
@@ -114,6 +115,19 @@ function InvoicePage() {
       toast.success(`${label} disalin.`);
     } catch {
       toast.error(`${label} gagal disalin.`);
+    }
+  };
+
+  const simulatePayment = async () => {
+    setSimulating(true);
+    try {
+      const response = await simulatePakasirPayment(orderId);
+      toast.success(response.message);
+      await loadInvoice(false, true);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Simulasi pembayaran gagal.");
+    } finally {
+      setSimulating(false);
     }
   };
 
@@ -189,8 +203,10 @@ function InvoicePage() {
 
               <section className="rounded-3xl border border-[#e4e7ec] bg-white p-4 shadow-[0_16px_45px_-38px_rgba(31,42,61,.45)] sm:p-6">
                 <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-[#fff1b3] text-[#8a6800]"><CreditCard className="h-5 w-5" /></span><div><h2 className="font-black text-[#101827]">Rincian pembayaran</h2><p className="text-xs text-[#68758b]">{method?.name ?? invoice.payment_method}</p></div></div>
+                <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-[#ecd46e] bg-[#fffbed] px-3 py-2.5 text-xs leading-5 text-[#715700]"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><span><strong className="font-black">Mode uji coba pembayaran.</strong> Pembayaran ini belum diproses secara riil.</span></div>
                 <div className="mt-5 space-y-3 text-sm">
-                  <MoneyRow label="Harga pesanan" value={rupiah(invoice.amount)} />
+                  <MoneyRow label="Harga pesanan" value={rupiah(invoice.base_amount ?? invoice.amount)} />
+                  {(invoice.discount ?? 0) > 0 && <MoneyRow label={`Diskon${invoice.coupon_code ? ` (${invoice.coupon_code})` : ""}`} value={`-${rupiah(invoice.discount ?? 0)}`} />}
                   <MoneyRow label="Biaya layanan" value={rupiah(invoice.fee ?? 0)} />
                   <div className="flex items-center justify-between gap-4 border-t border-[#e4e7ec] pt-4"><span className="font-black text-[#101827]">Total bayar</span><span className="text-xl font-black tabular-nums text-[#8a6800]">{rupiah(invoice.total_payment ?? invoice.amount)}</span></div>
                 </div>
@@ -228,6 +244,11 @@ function InvoicePage() {
                 )}
 
                 {!completed && !canceled && invoice.expired_at && <p className={`mt-4 flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs leading-5 ${expired ? "bg-red-50 text-red-700" : "bg-[#f7f8fa] text-[#596579]"}`}><Clock3 className="mt-0.5 h-4 w-4 shrink-0" /> Batas pembayaran: {formatTime(invoice.expired_at)}</p>}
+                {invoice.is_sandbox && !completed && !canceled && !expired && (
+                  <Button type="button" onClick={() => void simulatePayment()} disabled={simulating} className="mt-4 min-h-11 w-full bg-[#ffd84d] font-black text-[#17191d] hover:bg-[#f2c425]">
+                    {simulating ? <LoaderCircle className="animate-spin" /> : <Check />} {simulating ? "Memproses simulasi..." : "Simulasikan pembayaran berhasil"}
+                  </Button>
+                )}
                 {error && <p role="alert" className="mt-4 text-xs text-red-700">{error}</p>}
                 <Button type="button" variant="outline" onClick={() => void loadInvoice(true)} disabled={checking} className="mt-4 min-h-11 w-full"><RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} /> {checking ? "Memeriksa..." : "Perbarui status"}</Button>
                 <p className="mt-3 text-center text-xs leading-5 text-[#7b8798]">Status diperbarui otomatis setiap 15 detik selama menunggu pembayaran.</p>

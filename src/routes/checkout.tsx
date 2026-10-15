@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { ArrowLeft, LoaderCircle, LockKeyhole } from "lucide-react";
 import { toast } from "sonner";
@@ -13,7 +13,12 @@ import { createPakasirPayment } from "@/lib/api";
 import { ACTIVE_PAKASIR_PAYMENT_METHODS, type PakasirMethod } from "@/lib/pakasir";
 import { useDB } from "@/lib/store";
 
-export const Route = createFileRoute("/checkout")({ component: Checkout });
+export const Route = createFileRoute("/checkout")({
+  beforeLoad: () => {
+    throw redirect({ to: "/joki/mobile-legends" });
+  },
+  component: Checkout,
+});
 
 function Checkout() {
   const db = useDB();
@@ -48,7 +53,6 @@ function Checkout() {
           email: form.email.trim(),
           user_id: form.gameUserId.trim(),
           server_id: form.gameServerId.trim() || undefined,
-          customer_id: db.session?.role === "customer" ? db.session.userId : undefined,
           customer_name: form.name.trim(),
           game_id: game.id,
           game_name: game.name,

@@ -22,7 +22,6 @@ import {
   ShieldCheck,
   Store,
   Trash2,
-  UserCog,
   Users,
   WalletCards,
   X,
@@ -33,19 +32,16 @@ import { Logo, LogoutConfirmDialog } from "@/components/bs/PublicLayout";
 import { NativeSelect, ToneBadge, useHydrated, useSession } from "@/components/bs/ui";
 import {
   TRANSITIONS,
-  assignJokier,
   changeOrderStatus,
   deleteBanner,
   deleteCoupon,
   deleteJokiPackage,
   logout,
   setRefundStatus,
-  simulatePayment,
   updateSettings,
   upsertBanner,
   upsertCoupon,
   upsertGame,
-  upsertJokier,
   upsertJokiPackage,
   upsertService,
 } from "@/lib/actions";
@@ -96,6 +92,32 @@ type AdminView =
   | "banners"
   | "coupons"
   | "settings";
+
+const MLBB_RANKS = [
+  "Warrior",
+  "Elite",
+  "Master",
+  "Grandmaster",
+  "Epic",
+  "Legend",
+  "Mythic",
+  "Mythical Honor",
+  "Mythical Glory",
+  "Mythical Immortal",
+] as const;
+
+const ACTIVE_ORDER_STATUSES: readonly OrderStatus[] = [
+  "waiting_payment",
+  "in_progress",
+  "completed",
+  "cancelled",
+];
+
+function defaultCouponExpiry() {
+  const expiry = new Date();
+  expiry.setDate(expiry.getDate() + 30);
+  return expiry.toISOString().slice(0, 10);
+}
 
 const NAVIGATION = [
   { id: "overview", label: "Ringkasan", icon: LayoutDashboard },
@@ -282,7 +304,7 @@ function OverviewPanel({ onOpen }: { onOpen: (view: AdminView) => void }) {
   const customerCount = db.users.filter((user) => user.role === "customer").length;
   const maxStatus = Math.max(
     1,
-    ...Object.keys(ORDER_STATUS_META).map(
+    ...ACTIVE_ORDER_STATUSES.map(
       (status) => db.orders.filter((order) => order.status === status).length,
     ),
   );
@@ -295,7 +317,7 @@ function OverviewPanel({ onOpen }: { onOpen: (view: AdminView) => void }) {
             <p className="text-[10px] font-black uppercase tracking-[.2em] text-[#ffd84d]">Operational control</p>
             <h2 className="mt-2 text-2xl font-black sm:text-3xl">Semua aktivitas toko dalam satu layar.</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">
-              Pantau transaksi, proses pesanan, kinerja penjoki, dan performa promo.
+            Pantau transaksi, proses pesanan, katalog, dan performa promo.
             </p>
           </div>
           <Button onClick={() => onOpen("orders")} className="bg-[#ffd84d] font-black text-[#101419] hover:bg-[#ffca24]">
@@ -334,7 +356,7 @@ function OverviewPanel({ onOpen }: { onOpen: (view: AdminView) => void }) {
 
         <AdminCard title="Sebaran status pesanan">
           <div className="space-y-3.5">
-            {(Object.keys(ORDER_STATUS_META) as OrderStatus[]).map((status) => {
+            {ACTIVE_ORDER_STATUSES.map((status) => {
               const count = db.orders.filter((order) => order.status === status).length;
               return (
                 <div key={status}>
@@ -372,54 +394,38 @@ function OrdersPanel() {
   }, [db.orders, search, status]);
 
   const changeStatus = (orderId: string, current: OrderStatus, next: OrderStatus) => {
-    if (current === "waiting_payment" && next === "waiting_assignment") {
-      simulatePayment(orderId, "paid");
-      return;
-    }
     changeOrderStatus(orderId, next, { by: "admin" });
   };
 
   return (
-    <AdminCard title="Manajemen pesanan" subtitle="Pantau pembayaran, penugasan, dan progres seluruh transaksi.">
+    <AdminCard title="Manajemen pesanan" subtitle="Pantau pembayaran, status, dan progres seluruh transaksi.">
       <div className="mb-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_220px]">
         <SearchField value={search} onChange={setSearch} placeholder="Cari invoice, pelanggan, atau layanan..." />
         <NativeSelect value={status} onChange={(event) => setStatus(event.target.value as "all" | OrderStatus)} className="h-10 border-[#dfe4ea] bg-white">
           <option value="all">Semua status</option>
-          {(Object.keys(ORDER_STATUS_META) as OrderStatus[]).map((item) => <option key={item} value={item}>{ORDER_STATUS_META[item].label}</option>)}
+          {ACTIVE_ORDER_STATUSES.map((item) => <option key={item} value={item}>{ORDER_STATUS_META[item].label}</option>)}
         </NativeSelect>
       </div>
       <div className="overflow-x-auto rounded-xl border border-[#e6e9ee]">
-        <table className="w-full min-w-[1120px] text-left text-sm">
+        <table className="w-full min-w-[980px] text-left text-sm">
           <thead className="bg-[#f7f8fa] text-[10px] uppercase tracking-wider text-[#7c8592]">
-            <tr><th className="px-4 py-3">Pesanan</th><th className="px-4 py-3">Pelanggan</th><th className="px-4 py-3">Layanan</th><th className="px-4 py-3">Pembayaran</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Penjoki</th><th className="px-4 py-3 text-right">Total</th><th className="px-4 py-3">Aksi</th></tr>
+            <tr><th className="px-4 py-3">Pesanan</th><th className="px-4 py-3">Pelanggan</th><th className="px-4 py-3">Layanan</th><th className="px-4 py-3">Pembayaran</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Total</th><th className="px-4 py-3">Aksi</th></tr>
           </thead>
           <tbody className="divide-y divide-[#e9ecf0] bg-white">
-            {orders.map((order) => {
-              const assigned = db.jokiers.find((jokier) => jokier.id === order.jokierId);
-              return (
+            {orders.map((order) => (
                 <tr key={order.id} className="align-top hover:bg-[#fffdf5]">
                   <td className="px-4 py-3"><p className="font-black">{order.id}</p><p className="mt-1 text-xs text-[#89919d]">{fmtDateTime(order.createdAt)}</p></td>
                   <td className="px-4 py-3"><p className="font-bold">{order.customerName}</p><p className="mt-1 text-xs text-[#89919d]">{order.customerPhone}</p></td>
                   <td className="px-4 py-3"><p className="max-w-[180px] font-bold">{order.detail.serviceName}</p><p className="mt-1 text-xs text-[#89919d]">{order.detail.gameName}</p></td>
                   <td className="px-4 py-3"><ToneBadge tone={PAYMENT_STATUS_META[order.paymentStatus].tone}>{PAYMENT_STATUS_META[order.paymentStatus].label}</ToneBadge></td>
-                  <td className="px-4 py-3"><ToneBadge tone={ORDER_STATUS_META[order.status].tone}>{ORDER_STATUS_META[order.status].label}</ToneBadge><p className="mt-2 text-xs font-bold text-[#687180]">Progres {order.progress}%</p></td>
-                  <td className="px-4 py-3">
-                    {order.status === "waiting_assignment" ? (
-                      <NativeSelect
-                        defaultValue=""
-                        onChange={(event) => event.target.value && assignJokier(order.id, event.target.value)}
-                        className="h-9 min-w-40 bg-white text-xs"
-                      >
-                        <option value="">Pilih penjoki</option>
-                        {db.jokiers.filter((jokier) => jokier.status !== "offline").map((jokier) => <option key={jokier.id} value={jokier.id}>{jokier.name}</option>)}
-                      </NativeSelect>
-                    ) : (
-                      <span className="text-xs font-bold text-[#5f6875]">{assigned?.name ?? "Belum ditugaskan"}</span>
-                    )}
-                  </td>
+                  <td className="px-4 py-3"><ToneBadge tone={ORDER_STATUS_META[order.status].tone}>{ORDER_STATUS_META[order.status].label}</ToneBadge></td>
                   <td className="px-4 py-3 text-right font-black">{rupiah(order.price.total)}</td>
                   <td className="px-4 py-3">
-                    {TRANSITIONS[order.status].length > 0 ? (
+                    {order.status === "waiting_payment" ? (
+                      <span className="text-xs font-bold text-[#9aa2ad]">Menunggu pembayaran</span>
+                    ) : order.detail.serviceName.toLowerCase().startsWith("joki ") && order.paymentStatus === "paid" && !["completed", "cancelled"].includes(order.status) ? (
+                      <Button type="button" size="sm" onClick={() => changeOrderStatus(order.id, "completed", { by: "admin", message: "Joki diselesaikan oleh admin." })} className="h-9 bg-[#ffd84d] text-xs font-black text-[#17191d] hover:bg-[#f2c425]">Selesaikan Joki</Button>
+                    ) : TRANSITIONS[order.status].length > 0 ? (
                       <NativeSelect
                         key={`${order.id}-${order.status}`}
                         defaultValue=""
@@ -435,8 +441,7 @@ function OrdersPanel() {
                     ) : <span className="text-xs text-[#9aa2ad]">Tidak ada aksi</span>}
                   </td>
                 </tr>
-              );
-            })}
+            ))}
           </tbody>
         </table>
       </div>
@@ -598,6 +603,7 @@ const emptyJokiPackage = (sortOrder = 1): JokiPackage => ({
   id: "",
   gameSlug: "mobile-legends",
   group: "Joki Per Bintang",
+  rank: "",
   name: "",
   price: 0,
   estimate: "",
@@ -641,12 +647,16 @@ function JokiPackagesPanel() {
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!form.name.trim() || !form.group.trim() || !form.estimate.trim() || !form.image.trim()) {
-      setError("Nama, kategori, estimasi, dan gambar wajib diisi.");
+    if (!form.name.trim() || !form.group.trim() || !form.estimate.trim() || !form.image.trim() || (form.perStar && !form.rank?.trim())) {
+      setError("Nama, kategori, rank, estimasi, dan gambar wajib diisi untuk paket per bintang.");
       return;
     }
-    if (form.price <= 0) {
-      setError("Harga harus lebih dari Rp 0.");
+    if (form.perStar && !MLBB_RANKS.includes(form.rank?.trim() as (typeof MLBB_RANKS)[number])) {
+      setError("Rank kalkulator harus dipilih dari tingkatan Mobile Legends yang tersedia.");
+      return;
+    }
+    if (!Number.isFinite(form.price) || form.price <= 0 || !Number.isFinite(form.sortOrder) || form.sortOrder < 1) {
+      setError("Harga dan urutan tampil harus lebih dari 0.");
       return;
     }
     upsertJokiPackage({
@@ -654,6 +664,7 @@ function JokiPackagesPanel() {
       id: form.id || uid("joki-package"),
       name: form.name.trim(),
       group: form.group.trim(),
+      rank: form.perStar ? form.rank?.trim() : undefined,
       estimate: form.estimate.trim(),
       image: form.image.trim(),
       sortOrder: Math.max(1, form.sortOrder),
@@ -703,7 +714,8 @@ function JokiPackagesPanel() {
             <div className="space-y-3">
               <AdminField label="Nama paket"><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Joki Mythical Glory" className="h-10 bg-white" /></AdminField>
               <AdminField label="Kategori"><Input list="ml-package-groups" value={form.group} onChange={(event) => setForm({ ...form, group: event.target.value })} placeholder="Joki Per Bintang" className="h-10 bg-white" /><datalist id="ml-package-groups"><option value="Promo Joki Bonus Bintang" /><option value="Joki Per Bintang" /><option value="Paket Naik Rank" /></datalist></AdminField>
-              <div className="grid grid-cols-2 gap-3"><AdminField label="Harga"><Input type="number" min={1} value={form.price} onChange={(event) => setForm({ ...form, price: Number(event.target.value) })} className="h-10 bg-white" /></AdminField><AdminField label="Urutan"><Input type="number" min={1} value={form.sortOrder} onChange={(event) => setForm({ ...form, sortOrder: Number(event.target.value) })} className="h-10 bg-white" /></AdminField></div>
+              <AdminField label="Rank kalkulator"><Input list="mlbb-ranks" value={form.rank ?? ""} disabled={!form.perStar} onChange={(event) => setForm({ ...form, rank: event.target.value })} placeholder="Pilih rank" className="h-10 bg-white disabled:bg-slate-100" /><datalist id="mlbb-ranks">{MLBB_RANKS.map((rank) => <option key={rank} value={rank} />)}</datalist><p className="mt-1 text-[10px] text-[#7b8491]">Wajib untuk paket per bintang agar harga masuk ke kalkulator.</p></AdminField>
+              <div className="grid grid-cols-2 gap-3"><AdminField label={form.perStar ? "Harga per bintang (Rp)" : "Harga paket (Rp)"}><Input type="number" min={1} value={form.price} onChange={(event) => setForm({ ...form, price: Number(event.target.value) })} className="h-10 bg-white" /></AdminField><AdminField label="Urutan tampil"><Input type="number" min={1} value={form.sortOrder} onChange={(event) => setForm({ ...form, sortOrder: Number(event.target.value) })} className="h-10 bg-white" /></AdminField></div>
               <AdminField label="Estimasi"><Input value={form.estimate} onChange={(event) => setForm({ ...form, estimate: event.target.value })} placeholder="12 jam" className="h-10 bg-white" /></AdminField>
               <AdminImageUpload label="Gambar paket" value={form.image} onChange={(value) => setForm({ ...form, image: value })} />
               <div className="grid grid-cols-2 gap-3"><button type="button" onClick={() => setForm({ ...form, perStar: !form.perStar })} className={`rounded-xl border p-3 text-left ${form.perStar ? "border-[#e0b600] bg-[#fff8d7]" : "border-[#e4e8ed] bg-[#fafbfc]"}`}><span className="block text-xs font-black">Harga per bintang</span><span className="mt-1 block text-[10px] text-[#7b8491]">{form.perStar ? "Aktif" : "Tidak aktif"}</span></button><button type="button" onClick={() => setForm({ ...form, status: form.status === "active" ? "inactive" : "active" })} className={`rounded-xl border p-3 text-left ${form.status === "active" ? "border-emerald-300 bg-emerald-50" : "border-[#e4e8ed] bg-[#fafbfc]"}`}><span className="block text-xs font-black">Status paket</span><span className="mt-1 block text-[10px] text-[#7b8491]">{form.status === "active" ? "Aktif" : "Nonaktif"}</span></button></div>
@@ -768,48 +780,29 @@ function CustomersPanel() {
   useEffect(() => {
     void hydrateAdminState();
   }, []);
-  const customers = db.users.filter((user) => user.role === "customer" && (!search || `${user.name} ${user.email} ${user.phone}`.toLowerCase().includes(search.toLowerCase())));
+  const customers = db.users.filter((user) => {
+    const profile = user.profileExtras;
+    const searchable = [user.name, user.email, user.phone, profile?.gameNickname, profile?.gameUserId, profile?.gameServerId]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return user.role === "customer" && (!search || searchable.includes(search.toLowerCase()));
+  });
   return (
     <AdminCard title="Data pelanggan" subtitle="Akun pelanggan dan ringkasan aktivitas transaksinya.">
       <SearchField value={search} onChange={setSearch} placeholder="Cari nama, email, atau WhatsApp..." className="mb-4 max-w-xl" />
       <div className="overflow-x-auto rounded-xl border border-[#e6e9ee]">
-        <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="bg-[#f7f8fa] text-[10px] uppercase tracking-wider text-[#7c8592]"><tr><th className="px-4 py-3">Pelanggan</th><th className="px-4 py-3">WhatsApp</th><th className="px-4 py-3">Pesanan</th><th className="px-4 py-3">Total belanja</th><th className="px-4 py-3">Terdaftar</th></tr></thead>
+        <table className="w-full min-w-[940px] text-left text-sm">
+          <thead className="bg-[#f7f8fa] text-[10px] uppercase tracking-wider text-[#7c8592]"><tr><th className="px-4 py-3">Pelanggan</th><th className="px-4 py-3">WhatsApp</th><th className="px-4 py-3">Profil game</th><th className="px-4 py-3">Pesanan</th><th className="px-4 py-3">Total belanja</th><th className="px-4 py-3">Terdaftar</th></tr></thead>
           <tbody className="divide-y divide-[#e9ecf0] bg-white">
             {customers.map((customer) => {
               const orders = db.orders.filter((order) => order.customerId === customer.id);
-              return <tr key={customer.id}><td className="px-4 py-3"><p className="font-black">{customer.name}</p><p className="mt-1 text-xs text-[#89919d]">{customer.email}</p></td><td className="px-4 py-3 font-bold">{customer.phone}</td><td className="px-4 py-3 font-black">{orders.length}</td><td className="px-4 py-3 font-black">{rupiah(orders.filter((order) => order.paymentStatus === "paid").reduce((sum, order) => sum + order.price.total, 0))}</td><td className="px-4 py-3 text-xs text-[#687180]">{fmtDate(customer.createdAt)}</td></tr>;
+              const profile = customer.profileExtras;
+              const gameId = [profile?.gameUserId, profile?.gameServerId ? `(${profile.gameServerId})` : ""].filter(Boolean).join(" ");
+              return <tr key={customer.id}><td className="px-4 py-3"><p className="font-black">{customer.name}</p><p className="mt-1 text-xs text-[#89919d]">{customer.email}</p></td><td className="px-4 py-3 font-bold">{customer.phone || "-"}</td><td className="px-4 py-3"><p className="font-bold">{profile?.gameNickname || "Belum diatur"}</p><p className="mt-1 text-xs text-[#89919d]">{gameId || "ID game belum diisi"}</p></td><td className="px-4 py-3 font-black">{orders.length}</td><td className="px-4 py-3 font-black">{rupiah(orders.filter((order) => order.paymentStatus === "paid").reduce((sum, order) => sum + order.price.total, 0))}</td><td className="px-4 py-3 text-xs text-[#687180]">{fmtDate(customer.createdAt)}</td></tr>;
             })}
           </tbody>
         </table>
-      </div>
-    </AdminCard>
-  );
-}
-
-function JokiersPanel() {
-  const db = useDB();
-  return (
-    <AdminCard title="Manajemen penjoki" subtitle="Pantau kapasitas, status kerja, dan performa tim.">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {db.jokiers.map((jokier) => {
-          const active = db.orders.filter((order) => order.jokierId === jokier.id && !["completed", "cancelled"].includes(order.status)).length;
-          const user = db.users.find((item) => item.id === jokier.userId);
-          return (
-            <article key={jokier.id} className="rounded-2xl border border-[#e5e8ed] bg-[#fafbfc] p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#111722] text-sm font-black text-[#ffd84d]">{jokier.name.charAt(0)}</span><div className="min-w-0"><h3 className="truncate font-black">{jokier.name}</h3><p className="truncate text-xs text-[#89919d]">{user?.email}</p></div></div>
-                <ToneBadge tone={jokier.status === "available" ? "success" : jokier.status === "busy" ? "warning" : "neutral"}>{jokier.status}</ToneBadge>
-              </div>
-              <div className="mt-4 grid grid-cols-3 gap-2 text-center"><MiniMetric label="Aktif" value={active} /><MiniMetric label="Selesai" value={jokier.completed} /><MiniMetric label="Rating" value={jokier.rating.toFixed(1)} /></div>
-              <div className="mt-4 grid grid-cols-[1fr_100px] gap-2">
-                <NativeSelect value={jokier.status} onChange={(event) => upsertJokier({ ...jokier, status: event.target.value as typeof jokier.status })} className="h-9 bg-white text-xs font-bold"><option value="available">Tersedia</option><option value="busy">Sibuk</option><option value="offline">Offline</option></NativeSelect>
-                <Input type="number" min={1} value={jokier.capacity} onChange={(event) => upsertJokier({ ...jokier, capacity: Math.max(1, Number(event.target.value) || 1) })} className="h-9 bg-white text-xs" aria-label={`Kapasitas ${jokier.name}`} />
-              </div>
-              <p className="mt-2 text-[10px] text-[#89919d]">Kapasitas maksimum pekerjaan aktif.</p>
-            </article>
-          );
-        })}
       </div>
     </AdminCard>
   );
@@ -835,7 +828,7 @@ function RefundsPanel() {
   );
 }
 
-const emptyBannerForm = (): BannerSlide => ({
+const emptyBannerForm = (sortOrder = 1): BannerSlide => ({
   id: "",
   title: "",
   subtitle: "",
@@ -843,7 +836,7 @@ const emptyBannerForm = (): BannerSlide => ({
   href: "/",
   display: "image",
   active: true,
-  sortOrder: 1,
+  sortOrder,
 });
 
 function BannersPanel() {
@@ -868,12 +861,12 @@ function BannersPanel() {
       return;
     }
     setError("");
-    setForm(emptyBannerForm());
+    setForm(emptyBannerForm(banners.length + 1));
     setPage("list");
   };
 
   const openCreate = () => {
-    setForm(emptyBannerForm());
+    setForm(emptyBannerForm(banners.length + 1));
     setError("");
     setPage("create");
   };
@@ -972,10 +965,10 @@ function CouponsPanel() {
   const db = useDB();
   const [page, setPage] = useState<"list" | "create" | "edit">("list");
   const [error, setError] = useState("");
-  const [form, setForm] = useState({ code: "", type: "percent" as Coupon["type"], value: 10, minOrder: 0, quota: 100, expiresAt: "2026-12-31" });
+  const [form, setForm] = useState({ code: "", type: "percent" as Coupon["type"], value: 10, minOrder: 0, quota: 100, expiresAt: defaultCouponExpiry() });
   const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
   const resetForm = () => {
-    setForm({ code: "", type: "percent", value: 10, minOrder: 0, quota: 100, expiresAt: "2026-12-31" });
+    setForm({ code: "", type: "percent", value: 10, minOrder: 0, quota: 100, expiresAt: defaultCouponExpiry() });
     setEditingCoupon(null);
     setError("");
   };
@@ -991,16 +984,34 @@ function CouponsPanel() {
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const code = form.code.trim().toUpperCase();
+    const expiresAt = new Date(`${form.expiresAt}T23:59:59.999Z`);
+    if (!/^[A-Z0-9]{4,16}$/.test(code)) {
+      setError("Kode voucher harus terdiri dari 4–16 huruf kapital atau angka.");
+      return;
+    }
+    if (!Number.isFinite(form.value) || form.value <= 0 || (form.type === "percent" && form.value > 100)) {
+      setError("Nilai diskon tidak valid.");
+      return;
+    }
+    if (!Number.isFinite(form.minOrder) || form.minOrder < 0 || !Number.isFinite(form.quota) || form.quota < 1) {
+      setError("Minimal transaksi dan kuota harus valid.");
+      return;
+    }
+    if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
+      setError("Tanggal berakhir harus setelah hari ini.");
+      return;
+    }
     const result = upsertCoupon({
       id: editingCoupon?.id ?? uid("c"),
-      code: form.code.trim().toUpperCase(),
+      code,
       type: form.type,
       value: form.value,
       minOrder: form.minOrder,
       quota: form.quota,
       used: editingCoupon?.used ?? 0,
       active: editingCoupon?.active ?? true,
-      expiresAt: new Date(`${form.expiresAt}T16:59:00.000Z`).toISOString(),
+      expiresAt: expiresAt.toISOString(),
     });
     if (!result.ok) { setError(result.error); return; }
     resetForm();
@@ -1011,8 +1022,8 @@ function CouponsPanel() {
       {page !== "list" && <button type="button" onClick={() => setPage("list")} className="text-xs font-black text-[#7a6200] hover:underline">← Kembali ke daftar voucher</button>}
       {page !== "list" && <AdminCard title={page === "edit" ? "Edit voucher" : "Tambah voucher"} subtitle={page === "edit" ? `Ubah pengaturan ${editingCoupon?.code ?? "voucher"}.` : "Buat kode promo baru."}>
         <form onSubmit={submit} className="space-y-3">
-          <AdminField label="Kode voucher"><Input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} placeholder="PROMO26" className="h-10 bg-white uppercase" /></AdminField>
-          <div className="grid grid-cols-2 gap-2"><AdminField label="Jenis"><NativeSelect value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as Coupon["type"] })} className="h-10 bg-white"><option value="percent">Persen</option><option value="fixed">Nominal</option></NativeSelect></AdminField><AdminField label="Nilai"><Input type="number" min={1} value={form.value} onChange={(event) => setForm({ ...form, value: Number(event.target.value) })} className="h-10 bg-white" /></AdminField></div>
+          <AdminField label="Kode voucher"><Input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })} placeholder="PROMO26" maxLength={16} className="h-10 bg-white uppercase" /></AdminField>
+          <div className="grid grid-cols-2 gap-2"><AdminField label="Jenis"><NativeSelect value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as Coupon["type"] })} className="h-10 bg-white"><option value="percent">Persen</option><option value="fixed">Nominal</option></NativeSelect></AdminField><AdminField label={form.type === "percent" ? "Nilai diskon (%)" : "Nilai diskon (Rp)"}><Input type="number" min={1} max={form.type === "percent" ? 100 : undefined} value={form.value} onChange={(event) => setForm({ ...form, value: Number(event.target.value) })} className="h-10 bg-white" /></AdminField></div>
           <AdminField label="Minimal transaksi"><Input type="number" min={0} value={form.minOrder} onChange={(event) => setForm({ ...form, minOrder: Number(event.target.value) })} className="h-10 bg-white" /></AdminField>
           <div className="grid grid-cols-2 gap-2"><AdminField label="Kuota"><Input type="number" min={1} value={form.quota} onChange={(event) => setForm({ ...form, quota: Number(event.target.value) })} className="h-10 bg-white" /></AdminField><AdminField label="Berakhir"><Input type="date" value={form.expiresAt} onChange={(event) => setForm({ ...form, expiresAt: event.target.value })} className="h-10 bg-white" /></AdminField></div>
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-600">{error}</p>}
@@ -1057,6 +1068,11 @@ function TopupPanel() {
   const markupFlat = Math.max(0, Math.round(Number(flat) || 0));
   const sellingPrice = (basePrice: number) =>
     Math.round(basePrice + (basePrice * markupPercent / 100) + markupFlat);
+
+  useEffect(() => {
+    setPercent(String(db.settings.topupMarkupPercent ?? 0));
+    setFlat(String(db.settings.topupMarkupFlat ?? 0));
+  }, [db.settings.topupMarkupFlat, db.settings.topupMarkupPercent]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1260,9 +1276,24 @@ function SettingsPanel() {
   const db = useDB();
   const [form, setForm] = useState<StoreSettings>(db.settings);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    setForm(db.settings);
+  }, [db.settings]);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    updateSettings(form);
+    const storeName = form.storeName.trim();
+    const whatsapp = form.whatsapp.replace(/\D/g, "");
+    if (storeName.length < 3) {
+      setError("Nama toko minimal 3 karakter.");
+      return;
+    }
+    if (whatsapp && !/^(?:08\d{8,11}|628\d{8,11})$/.test(whatsapp)) {
+      setError("Nomor WhatsApp harus memakai format 08… atau 628….");
+      return;
+    }
+    updateSettings({ ...form, storeName, whatsapp });
+    setError("");
     setSaved(true);
     window.setTimeout(() => setSaved(false), 1800);
   };
@@ -1270,23 +1301,21 @@ function SettingsPanel() {
     <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
       <AdminCard title="Pengaturan toko" subtitle="Informasi ini digunakan pada storefront dan kanal bantuan.">
         <form onSubmit={submit} className="space-y-4">
-          <AdminField label="Nama toko"><Input value={form.storeName} onChange={(event) => setForm({ ...form, storeName: event.target.value })} className="h-11 bg-white" /></AdminField>
-          <AdminField label="Nomor WhatsApp"><Input value={form.whatsapp} onChange={(event) => setForm({ ...form, whatsapp: event.target.value.replace(/\D/g, "") })} className="h-11 bg-white" /></AdminField>
-          <AdminField label="Pengumuman"><textarea value={form.announcement} onChange={(event) => setForm({ ...form, announcement: event.target.value })} rows={4} className="w-full rounded-xl border border-[#dfe4ea] bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#ffd84d]" /></AdminField>
-          <label className="flex items-center justify-between gap-4 rounded-xl border border-[#e4e8ed] bg-[#fafbfc] p-4"><span><span className="block text-sm font-black">Mode pemeliharaan</span><span className="mt-1 block text-xs text-[#7f8895]">Hentikan sementara transaksi baru di storefront.</span></span><button type="button" onClick={() => setForm({ ...form, maintenance: !form.maintenance })} className={`relative h-7 w-12 shrink-0 rounded-full transition ${form.maintenance ? "bg-[#ffd84d]" : "bg-[#cdd3da]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${form.maintenance ? "left-6" : "left-1"}`} /></button></label>
+          <AdminField label="Nama toko"><Input value={form.storeName} onChange={(event) => setForm({ ...form, storeName: event.target.value })} placeholder="BotakStore" maxLength={80} className="h-11 bg-white" /></AdminField>
+          <AdminField label="Nomor WhatsApp"><Input value={form.whatsapp} onChange={(event) => setForm({ ...form, whatsapp: event.target.value.replace(/\D/g, "") })} placeholder="081234567890" inputMode="tel" maxLength={14} className="h-11 bg-white" /></AdminField>
+          <label className="flex items-center justify-between gap-4 rounded-xl border border-[#e4e8ed] bg-[#fafbfc] p-4"><span><span className="block text-sm font-black">Mode pemeliharaan</span><span className="mt-1 block text-xs text-[#7f8895]">Tampilkan halaman maintenance dan hentikan akses storefront sementara.</span></span><button type="button" onClick={() => setForm({ ...form, maintenance: !form.maintenance })} className={`relative h-7 w-12 shrink-0 rounded-full transition ${form.maintenance ? "bg-[#ffd84d]" : "bg-[#cdd3da]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${form.maintenance ? "left-6" : "left-1"}`} /></button></label>
+          {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-600">{error}</p>}
           <Button type="submit" className="bg-[#111722] font-black text-white hover:bg-[#232b39]">{saved ? <><RefreshCw /> Tersimpan</> : <><ShieldCheck /> Simpan pengaturan</>}</Button>
         </form>
       </AdminCard>
       <AdminCard title="Audit data frontend" subtitle="Pemetaan kesiapan integrasi backend.">
         <div className="space-y-3 text-sm">
           {[
-            { label: "Pesanan, akun & pembayaran", ready: true },
-            { label: "Katalog joki, penjoki & voucher", ready: true },
-            { label: "Refund & pengaturan toko", ready: true },
-            { label: "Produk, harga & metode top up", ready: true },
-            { label: "Banner storefront", ready: true },
-            { label: "FAQ & kebijakan", ready: false },
-          ].map((item) => <div key={item.label} className="flex items-center gap-2.5 rounded-lg bg-[#f7f8fa] px-3 py-2.5 font-bold text-[#596372]"><PackageCheck className={`h-4 w-4 ${item.ready ? "text-emerald-600" : "text-amber-500"}`} /><span className="min-w-0 flex-1">{item.label}</span><span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${item.ready ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{item.ready ? "Prototype" : "Migrasi"}</span></div>)}
+            { label: "Nama toko — navbar, footer & banner", ready: true },
+            { label: "WhatsApp — tombol CS & bantuan", ready: true },
+            { label: "Mode pemeliharaan — blok transaksi baru", ready: true },
+            { label: "Markup Top Up — harga jual frontend", ready: true },
+          ].map((item) => <div key={item.label} className="flex items-center gap-2.5 rounded-lg bg-[#f7f8fa] px-3 py-2.5 font-bold text-[#596372]"><PackageCheck className={`h-4 w-4 ${item.ready ? "text-emerald-600" : "text-amber-500"}`} /><span className="min-w-0 flex-1">{item.label}</span><span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${item.ready ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{item.ready ? "Live" : "Migrasi"}</span></div>)}
         </div>
       </AdminCard>
     </div>

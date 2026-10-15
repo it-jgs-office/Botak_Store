@@ -17,13 +17,12 @@ import { Input } from "@/components/ui/input";
 import { PublicLayout } from "@/components/bs/PublicLayout";
 import { JokiTab } from "@/components/bs/JokiTab";
 import { Field, NativeSelect } from "@/components/bs/ui";
-import { calcPrice, mlbbRankStarRange } from "@/lib/pricing";
-import { saveDraft } from "@/lib/actions";
+import { mlbbRankStarRange } from "@/lib/pricing";
+import { calculatePerStarBoost, calculatorPackages, type CalculatorRankPackage } from "@/lib/joki-calculator";
 import { useDB } from "@/lib/store";
 import { rupiah } from "@/lib/format";
 import { MLBB_GAME_ID } from "@/lib/seed";
 import { routeSeo } from "@/lib/site";
-import type { CheckoutDraft, Coupon, JokiService } from "@/lib/types";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -38,24 +37,11 @@ export const Route = createFileRoute("/")({
 
 export function JokiPage() {
   const db = useDB();
-  const featured = useMemo(
-    () =>
-      db.services
-        .filter((s) => s.gameId === MLBB_GAME_ID && s.status === "active")
-        .sort((a, b) => b.sold - a.sold),
-    [db.services],
+  const perStarPackages = useMemo(
+    () => calculatorPackages(db.jokiPackages),
+    [db.jokiPackages],
   );
-  const rankService = featured.find((service) => service.type === "rank_target");
-  const perStarService = featured.find((service) => service.type === "per_star");
   const mobileLegendsGame = db.games.find((game) => game.id === MLBB_GAME_ID);
-  const rankNames = [
-    ...(rankService?.pricing.tiers ?? []).map((tier) => tier.name),
-    ...((rankService?.pricing.tiers ?? []).some((tier) =>
-      tier.name.toLowerCase().includes("immortal"),
-    )
-      ? []
-      : ["Mythical Immortal"]),
-  ];
   const openCalculator = () => {
     window.setTimeout(() => {
       document.getElementById("kalkulator-joki")?.scrollIntoView({ behavior: "smooth" });
@@ -76,14 +62,13 @@ export function JokiPage() {
             />
           </Link>
           <RankCarousel
-            ranks={rankNames}
-            pricePerStar={perStarService?.pricing.pricePerStar ?? 0}
+            packages={perStarPackages}
           />
         </section>
         <JokiTab />
 
-        {rankService && (
-          <RankBoostCalculatorReference service={rankService} coupons={db.coupons} />
+        {perStarPackages.length > 1 && (
+          <RankBoostCalculatorReference packages={perStarPackages} />
         )}
 
         <section className="mb-6 rounded-2xl border border-[#ecd46e] bg-white px-4 py-4 shadow-[0_10px_28px_-24px_rgba(104,76,0,.55)] sm:px-6 sm:py-5 md:mb-12 md:px-7 md:py-6">
@@ -165,13 +150,13 @@ export function JokiPage() {
   );
 }
 
-function RankCarousel({ ranks, pricePerStar }: { ranks: string[]; pricePerStar: number }) {
+function RankCarousel({ packages }: { packages: CalculatorRankPackage[] }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [visibleCount, setVisibleCount] = useState(3);
   const [isPaused, setIsPaused] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const trackRef = useRef<HTMLDivElement>(null);
-  const lastStart = Math.max(0, ranks.length - visibleCount);
+  const lastStart = Math.max(0, packages.length - visibleCount);
 
   useEffect(() => {
     const small = window.matchMedia("(min-width: 640px)");
@@ -216,7 +201,7 @@ function RankCarousel({ ranks, pricePerStar }: { ranks: string[]; pricePerStar: 
     setActiveIndex(Math.min(lastStart, Math.max(0, index)));
   };
 
-  if (!ranks.length) return null;
+  if (!packages.length) return null;
 
   return (
     <div
@@ -239,15 +224,15 @@ function RankCarousel({ ranks, pricePerStar }: { ranks: string[]; pricePerStar: 
           style={{ touchAction: "pan-y" }}
           className="flex gap-3 overflow-hidden px-1 pt-7 pb-2 select-none sm:gap-4"
         >
-          {ranks.map((rank, index) => (
+          {packages.map((item, index) => (
             <div
-              key={rank}
+              key={item.id}
               className="w-[calc((100%-1.5rem)/3)] flex-none sm:w-[calc((100%-2rem)/3)] lg:w-[calc((100%-4rem)/5)]"
               role="group"
               aria-roledescription="slide"
-              aria-label={`${index + 1} dari ${ranks.length}: ${rank}`}
+              aria-label={`${index + 1} dari ${packages.length}: ${item.rank}`}
             >
-              <RankPriceCard rank={rank} index={index} pricePerStar={pricePerStar} />
+              <RankPriceCard item={item} index={index} />
             </div>
           ))}
         </div>
@@ -304,21 +289,14 @@ function RankCarousel({ ranks, pricePerStar }: { ranks: string[]; pricePerStar: 
       )}
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         Menampilkan rank {activeIndex + 1} sampai{" "}
-        {Math.min(activeIndex + visibleCount, ranks.length)} dari {ranks.length}
+        {Math.min(activeIndex + visibleCount, packages.length)} dari {packages.length}
       </p>
     </div>
   );
 }
 
-function RankPriceCard({
-  rank,
-  index,
-  pricePerStar,
-}: {
-  rank: string;
-  index: number;
-  pricePerStar: number;
-}) {
+function RankPriceCard({ item, index }: { item: CalculatorRankPackage; index: number }) {
+  const { rank, price: pricePerStar } = item;
   const theme = rankTheme(rank);
   const background = rankBackgroundAsset(rank);
   const cardStyle = {
@@ -503,6 +481,7 @@ function HeroCategory({
     </Link>
   );
 }
+/* Legacy static calculator retained as source history only; the dynamic calculator is below.
 function RankBoostCalculator({ service, coupons }: { service: JokiService; coupons: Coupon[] }) {
   const nav = useNavigate();
   const tiers = service.pricing.tiers ?? [];
@@ -637,41 +616,44 @@ function RankBoostCalculator({ service, coupons }: { service: JokiService; coupo
     </section>
   );
 }
+*/
 function RankBoostCalculatorReference({
-  service,
-  coupons,
+  packages,
 }: {
-  service: JokiService;
-  coupons: Coupon[];
+  packages: CalculatorRankPackage[];
 }) {
   const nav = useNavigate();
-  const tiers = service.pricing.tiers ?? [];
+  const initialFromIndex = Math.min(2, Math.max(0, packages.length - 2));
+  const initialToIndex = Math.min(initialFromIndex + 1, packages.length - 1);
   const [calculated, setCalculated] = useState(false);
-  const [stars, setStars] = useState({ from: 1, to: 0 });
+  const [stars, setStars] = useState(() => ({
+    from: mlbbRankStarRange(packages[initialFromIndex]?.rank).min,
+    to: mlbbRankStarRange(packages[initialToIndex]?.rank).min,
+  }));
   const [ranks, setRanks] = useState(() => {
-    const fromIndex = Math.min(4, Math.max(0, tiers.length - 2));
-    const toIndex = Math.min(fromIndex + 2, tiers.length - 1);
-    return { from: tiers[fromIndex]?.name ?? "", to: tiers[toIndex]?.name ?? "" };
+    return { from: packages[initialFromIndex]?.rank ?? "", to: packages[initialToIndex]?.rank ?? "" };
   });
-  const fromIndex = tiers.findIndex((tier) => tier.name === ranks.from);
-  const availableTargets = tiers.slice(Math.max(0, fromIndex + 1));
-  const draft: CheckoutDraft = {
-    serviceId: service.id,
-    fromRank: ranks.from,
-    toRank: ranks.to,
-    fromStars: stars.from,
-    toStars: stars.to,
-    server: service.servers?.[0],
-    modeId: service.pricing.modes[0]?.id,
-    priority: false,
-  };
-  const quote = calcPrice(service, draft, coupons);
+  const fromIndex = packages.findIndex((item) => item.rank === ranks.from);
+  const availableTargets = packages.slice(Math.max(0, fromIndex + 1));
+  const quote = calculatePerStarBoost(packages, ranks.from, ranks.to, stars.from, stars.to);
+
+  useEffect(() => {
+    const fromExists = packages.some((item) => item.rank === ranks.from);
+    const toIndex = packages.findIndex((item) => item.rank === ranks.to);
+    if (fromExists && toIndex > packages.findIndex((item) => item.rank === ranks.from)) return;
+
+    const from = packages[initialFromIndex]?.rank ?? "";
+    const to = packages[initialToIndex]?.rank ?? "";
+    setRanks({ from, to });
+    setStars({ from: mlbbRankStarRange(from).min, to: mlbbRankStarRange(to).min });
+    setCalculated(false);
+  }, [initialFromIndex, initialToIndex, packages, ranks.from, ranks.to]);
 
   const selectFromRank = (from: string) => {
-    const nextFromIndex = tiers.findIndex((tier) => tier.name === from);
-    const currentTargetIndex = tiers.findIndex((tier) => tier.name === ranks.to);
+    const nextFromIndex = packages.findIndex((item) => item.rank === from);
+    const currentTargetIndex = packages.findIndex((item) => item.rank === ranks.to);
     const to =
-      currentTargetIndex > nextFromIndex ? ranks.to : (tiers[nextFromIndex + 1]?.name ?? "");
+      currentTargetIndex > nextFromIndex ? ranks.to : (packages[nextFromIndex + 1]?.rank ?? "");
     setRanks({ from, to });
     setStars({
       from: mlbbRankStarRange(from).min,
@@ -697,6 +679,7 @@ function RankBoostCalculatorReference({
             BotakStore Boost
           </p>
           <h2 className="mt-1 text-xl font-black sm:text-3xl">Rank Boost Calculator</h2>
+          <p className="mt-1 text-xs font-semibold text-[#677287] sm:text-sm">Harga dihitung dari paket joki per bintang yang aktif di katalog.</p>
         </div>
 
         <div className="relative z-10 p-4 sm:p-7">
@@ -706,7 +689,7 @@ function RankBoostCalculatorReference({
                 number="01"
                 title="Rank saat ini"
                 value={ranks.from}
-                options={tiers.slice(0, -1).map((tier) => tier.name)}
+                options={packages.slice(0, -1).map((item) => item.rank)}
                 onChange={selectFromRank}
                 stars={stars.from}
                 starRange={mlbbRankStarRange(ranks.from)}
@@ -720,7 +703,7 @@ function RankBoostCalculatorReference({
                 number="02"
                 title="Target rank"
                 value={ranks.to}
-                options={availableTargets.map((tier) => tier.name)}
+                options={availableTargets.map((item) => item.rank)}
                 onChange={(to) => {
                   setRanks((current) => ({ ...current, to }));
                   setStars((current) => ({
@@ -747,18 +730,18 @@ function RankBoostCalculatorReference({
             <div className="mt-5 min-h-16 text-center">
               {calculated ? (
                 <div className="animate-calc-reveal text-white drop-shadow-md">
-                  <p className="text-xs font-bold">Estimasi harga</p>
+                  <p className="text-xs font-bold">Estimasi harga per bintang</p>
                   <p className="mt-1 text-2xl font-black text-white">
-                    {rupiah(quote.snapshot.total)}
+                    {rupiah(quote.total)}
                   </p>
                   <p className="mt-1 text-[10px] font-semibold text-white">
                     {ranks.from} {stars.from}★ → {ranks.to} {stars.to}★ · Estimasi{" "}
-                    {service.estimate}
+                    {quote.stars} bintang
                   </p>
                 </div>
               ) : (
                 <p className="calc-prompt-pulse rounded-xl bg-white/90 px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm">
-                  Pilih rank dan bintang lalu tekan Hitung untuk melihat estimasi.
+                  Hitungan memakai harga paket per bintang yang aktif di katalog admin.
                 </p>
               )}
             </div>
@@ -768,7 +751,7 @@ function RankBoostCalculatorReference({
             >
               <button
                 type="button"
-                disabled={!ranks.from || !ranks.to || Object.keys(quote.errors).length > 0}
+                disabled={!ranks.from || !ranks.to || quote.stars < 1}
                 onClick={() => setCalculated(true)}
                 className="flex items-center justify-center gap-2 rounded-xl bg-[#ffd84d] px-5 py-3.5 text-sm font-black uppercase text-[#17191d] shadow-md transition hover:bg-[#ffca24] disabled:opacity-45"
               >
@@ -778,8 +761,7 @@ function RankBoostCalculatorReference({
                 <button
                   type="button"
                   onClick={() => {
-                    saveDraft(draft);
-                    nav({ to: "/checkout" });
+                    nav({ to: "/joki/$slug", params: { slug: "mobile-legends" } });
                   }}
                   className="flex items-center justify-center gap-1.5 rounded-xl border border-white bg-white px-3 py-3 text-xs font-black text-[#8a6800] shadow-md transition hover:bg-[#fff8df] sm:px-5 sm:text-sm"
                 >

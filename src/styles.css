@@ -480,6 +480,23 @@
   animation: topup-account-shake 0.42s ease-in-out;
 }
 
+@keyframes joki-scroll-cue {
+  0%,
+  100% {
+    opacity: 0.65;
+    transform: translateX(-3px);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(3px);
+  }
+}
+
+.joki-scroll-cue {
+  animation: joki-scroll-cue 1.35s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
 .calc-rank-preview {
   animation: calc-preview-idle 3.2s ease-in-out infinite;
 }
@@ -531,6 +548,7 @@
   .calc-prompt-pulse,
   .animate-calc-reveal,
   .animate-topup-account-shake,
+  .joki-scroll-cue,
   .rank-card-orb,
   .rank-card-sweep,
   .rank-card-particle,

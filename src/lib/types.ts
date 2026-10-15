@@ -34,6 +34,14 @@ export interface User {
   password?: string | undefined;
   role: Role;
   createdAt: string;
+  profileExtras?: {
+    avatar?: string | null;
+    gameNickname?: string;
+    gameUserId?: string;
+    gameServerId?: string;
+    notifOrder?: boolean;
+    notifPromo?: boolean;
+  } | undefined;
 }
 
 export interface Game {
@@ -95,6 +103,8 @@ export interface JokiPackage {
   id: string;
   gameSlug: "mobile-legends";
   group: string;
+  /** Rank that receives this per-star price, used by the public calculator. */
+  rank?: string | undefined;
   name: string;
   price: number;
   estimate: string;
@@ -260,7 +270,6 @@ export interface BannerSlide {
 export interface StoreSettings {
   storeName: string;
   whatsapp: string;
-  announcement: string;
   maintenance: boolean;
   topupMarkupPercent: number;
   topupMarkupFlat: number;

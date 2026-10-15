@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, LogOut, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,17 +33,22 @@ const MARQUEE_PAYMENT_METHODS = [
   ...ACTIVE_PAKASIR_PAYMENT_METHODS,
 ];
 
-export function Logo({ animated = true }: { animated?: boolean }) {
+export function Logo({ animated = true, storeName }: { animated?: boolean; storeName?: string }) {
+  const label = storeName?.trim() || "BotakStore";
   return (
     <Link
       to="/"
-      aria-label="Botak Store"
+      aria-label={label}
       className={`logo-lockup ${animated ? "logo-lockup-animated" : ""}`}
     >
       <span className="logo-icon-shell">
         <img src="/iconbotak.png" alt="" className="logo-icon brand-logo" />
       </span>
-      <img src="/logobotak.png" alt="Botak Store" className="logo-wordmark" />
+      {label === "BotakStore" ? (
+        <img src="/logobotak.png" alt={label} className="logo-wordmark" />
+      ) : (
+        <span className="max-w-40 truncate text-base font-black tracking-tight text-white sm:text-lg">{label}</span>
+      )}
     </Link>
   );
 }
@@ -77,6 +82,41 @@ export function LogoutConfirmDialog({
   );
 }
 
+function MaintenanceScreen({ storeName }: { storeName: string }) {
+  return (
+    <main className="grid min-h-screen place-items-center bg-[#101419] px-4 py-8 text-white">
+      <section className="w-full max-w-xl text-center">
+        <div className="flex justify-center">
+          <Logo animated={false} storeName={storeName} />
+        </div>
+
+        <div className="mt-8 rounded-[2rem] border border-[#ffd84d] bg-[#ffd84d] p-6 text-[#17191d] shadow-[0_30px_90px_-35px_rgba(0,0,0,.9)] sm:mt-10 sm:p-10">
+          <img src="/maintenance.gif" alt="" className="mx-auto h-28 w-28 object-contain sm:h-36 sm:w-36" />
+          <p className="mt-5 text-[10px] font-black uppercase tracking-[.26em] text-[#17191d]">Status layanan</p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-[#17191d] sm:text-5xl">Sedang dalam<br /><span className="text-[#17191d]">pemeliharaan.</span></h1>
+          <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-[#17191d] sm:text-base sm:leading-7">
+            Kami sedang menyempurnakan layanan {storeName}. Seluruh halaman dan transaksi sementara tidak dapat diakses.
+          </p>
+
+          <div className="mt-7 rounded-2xl border border-[#d7aa00] bg-white/45 px-4 py-3 text-left">
+            <div className="flex items-center gap-3">
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#17191d] opacity-60 motion-reduce:animate-none" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#17191d]" />
+              </span>
+              <div>
+                <p className="text-xs font-black text-[#17191d]">Pembaruan sistem sedang berjalan</p>
+                <p className="mt-0.5 text-[11px] text-[#17191d]">Silakan kembali beberapa saat lagi.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p className="mt-5 text-xs font-medium text-white/35">© {new Date().getFullYear()} {storeName}</p>
+      </section>
+    </main>
+  );
+}
+
 export function PublicLayout({
   children,
   banner = "full",
@@ -95,18 +135,61 @@ export function PublicLayout({
   liftChat?: boolean;
 }) {
   const { session, user, db } = useSession();
+  const storeName = db.settings.storeName?.trim() || "BotakStore";
   const hydrated = useHydrated();
   const navigate = useNavigate();
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const [mobileHeaderHidden, setMobileHeaderHidden] = useState(false);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+
+      if (window.innerWidth >= 640) {
+        lastScrollY.current = currentScrollY;
+        setMobileHeaderHidden(false);
+        return;
+      }
+
+      const scrollDelta = currentScrollY - lastScrollY.current;
+
+      if (currentScrollY <= 8) {
+        setMobileHeaderHidden(false);
+      } else if (scrollDelta > 8) {
+        setMobileHeaderHidden(true);
+      } else if (scrollDelta < -8) {
+        setMobileHeaderHidden(false);
+      }
+
+      lastScrollY.current = currentScrollY;
+    };
+
+    lastScrollY.current = window.scrollY;
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleScroll);
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, []);
+
+  const headerHidden = hideHeader || mobileHeaderHidden;
+
+  if (db.settings.maintenance) {
+    return <MaintenanceScreen storeName={storeName} />;
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header
         className={`sticky top-0 z-40 border-b border-white/10 bg-[#101419] text-white shadow-[0_8px_28px_-22px_rgba(0,0,0,.75)] transition-transform duration-300 motion-reduce:transition-none ${
-          hideHeader ? "-translate-y-full" : "translate-y-0"
+          headerHidden ? "-translate-y-full" : "translate-y-0"
         }`}
       >
         <div className="mx-auto flex min-h-14 max-w-7xl flex-wrap items-center justify-between gap-2 px-3 py-2 sm:h-16 sm:flex-nowrap sm:gap-4 sm:px-4 sm:py-0">
-        <Logo />
+        <Logo storeName={storeName} />
           <div className="hidden sm:order-none sm:mx-auto sm:max-w-2xl sm:flex-1 sm:block">
             <ServiceNavigation active={serviceNavigation} />
           </div>
@@ -191,13 +274,13 @@ export function PublicLayout({
       <footer className={`border-t border-white/10 bg-[#101419] text-white pb-16 sm:pb-0`}>
         <div className="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-4 py-8 sm:py-10 md:grid-cols-4 md:gap-8 md:py-12">
           <div className="col-span-2 space-y-3 md:col-span-2">
-            <Logo animated={false} />
+            <Logo animated={false} storeName={storeName} />
             <p className="max-w-sm text-sm text-white/60">
               Layanan joki Mobile Legends dengan paket jelas, progres transparan, dan penjoki
               terverifikasi.
             </p>
             <p className="text-xs text-white/40">
-              Prototype demo â€” semua data & pembayaran adalah simulasi.
+              Pembayaran dan status pesanan dapat dipantau melalui halaman invoice.
             </p>
           </div>
           <div className="space-y-2 text-sm">
@@ -229,7 +312,7 @@ export function PublicLayout({
           </div>
         </div>
         <p className="border-t border-white/10 py-4 text-center text-xs text-white/40">
-          Â© 2026 BotakStore. All rights reserved.
+          © 2026 {storeName}. All rights reserved.
         </p>
       </footer>
       <a

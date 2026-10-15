@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ClipboardList, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,9 +11,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { OrderStatusBadge, Panel } from "./ui";
-import { fetchPublicOrder, type PublicOrder } from "@/lib/api";
+import { fetchPublicOrder, fetchRecentOrders, type PublicOrder } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
-import { buildSeed } from "@/lib/seed";
 import { useDB } from "@/lib/store";
 
 export function OrderCheckTab() {
@@ -30,7 +29,13 @@ export function OrderCheckTab() {
     ) ?? null
     : null, [db.orders, searchedQuery]);
   const order = remoteOrder ?? localOrder;
-  const demoOrders = useMemo(() => buildSeed().orders.slice(0, 5), []);
+  const [recentOrders, setRecentOrders] = useState<PublicOrder[]>([]);
+
+  useEffect(() => {
+    void fetchRecentOrders()
+      .then((response) => setRecentOrders(response.data))
+      .catch(() => setRecentOrders([]));
+  }, []);
 
   const checkOrder = async () => {
     const value = query.trim();
@@ -55,24 +60,24 @@ export function OrderCheckTab() {
   };
 
   return (
-    <section className="mb-6 rounded-2xl border border-[#e7e9ed] bg-white p-4 shadow-[0_20px_55px_-38px_rgba(31,42,61,.28)] sm:mb-8 sm:rounded-[2rem] sm:p-6">
+    <section className="mb-6 rounded-2xl border border-[#e7e9ed] bg-white p-3 shadow-[0_20px_55px_-38px_rgba(31,42,61,.28)] sm:mb-8 sm:rounded-[2rem] sm:p-6">
       <div className="mx-auto max-w-2xl text-center">
         <span className="mx-auto grid h-9 w-9 place-items-center rounded-lg bg-[#ffe47d] text-[#171c25] sm:h-11 sm:w-11 sm:rounded-xl">
           <ClipboardList className="h-5 w-5" />
         </span>
-        <h2 className="mt-3 text-2xl font-black tracking-tight text-[#111827] sm:text-3xl">Cek Pesanan</h2>
-        <p className="mt-2 text-sm text-[#6b7890]">
+        <h2 className="mt-3 text-xl font-black tracking-tight text-[#111827] sm:text-3xl">Cek Pesanan</h2>
+        <p className="mt-2 px-1 text-xs leading-5 text-[#6b7890] sm:text-sm">
           Masukkan nomor pesanan atau invoice untuk melihat status pembayaran dan pesanan.
         </p>
-        <div className="mt-5 flex gap-2">
+        <div className="mt-5 flex min-w-0 gap-2">
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="BS-JK-... atau INV/..."
-            className="h-11 text-left"
+            className="h-10 min-w-0 text-left text-xs sm:h-11 sm:text-sm"
           />
-          <Button className="h-11 px-5" onClick={checkOrder} disabled={loading}>
-            <Search /> {loading ? "Memuat..." : "Cek"}
+          <Button className="h-10 shrink-0 px-4 text-xs sm:h-11 sm:px-5 sm:text-sm" onClick={checkOrder} disabled={loading}>
+            <Search className="h-4 w-4" /> {loading ? "Memuat..." : "Cek"}
           </Button>
         </div>
         {searchedQuery && !loading && !order && (
@@ -81,22 +86,21 @@ export function OrderCheckTab() {
           </p>
         )}
         {order && (
-          <Panel className="mt-5 text-left" title={order.detail.serviceName}>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="font-mono text-sm">{order.id}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{orderTarget(order)}</p>
+          <Panel className="mt-5 min-w-0 p-3 text-left sm:p-5">
+            <h3 className="break-words text-sm font-black leading-5 text-[#202738] sm:text-base">
+              {order.detail.serviceName}
+            </h3>
+            <div className="mt-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="break-all font-mono text-xs font-bold text-[#374151] sm:text-sm">{order.id}</p>
+                <p className="mt-1 text-xs text-muted-foreground sm:text-sm">{orderTarget(order)}</p>
               </div>
-              <OrderStatusBadge status={order.status} />
+              <span className="self-start"><OrderStatusBadge status={order.status} /></span>
             </div>
-            <p className="mt-4 text-sm text-muted-foreground">
-              Progres pengerjaan:{" "}
-              <span className="font-semibold text-foreground">{order.progress}%</span>
-            </p>
             {(order.id.startsWith("BS-TOPUP-") || order.id.startsWith("BS-JOKI-")) && (
               <a
                 href={`/invoice/${encodeURIComponent(order.id)}`}
-                className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-[#ffd84d] px-4 text-sm font-black text-[#17191d] transition hover:bg-[#f2c425]"
+                className="mt-4 inline-flex min-h-10 w-full items-center justify-center rounded-xl bg-[#ffd84d] px-3 text-center text-xs font-black text-[#17191d] transition hover:bg-[#f2c425] sm:min-h-11 sm:w-auto sm:px-4 sm:text-sm"
               >
                 Lihat invoice & pembayaran
               </a>
@@ -106,8 +110,8 @@ export function OrderCheckTab() {
       </div>
 
       <div className="mt-7 text-center sm:mt-10">
-        <h3 className="font-black text-[#121827]">Contoh Pesanan</h3>
-        <p className="mt-0.5 text-xs text-[#68758b]">Menampilkan 5 data pesanan dummy.</p>
+        <h3 className="font-black text-[#121827]">Pesanan Terbaru</h3>
+        <p className="mt-0.5 text-xs text-[#68758b]">Status transaksi terbaru BotakStore.</p>
       </div>
 
       <div className="mt-4 overflow-x-auto rounded-xl border border-[#e7e8ea]">
@@ -127,7 +131,7 @@ export function OrderCheckTab() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {demoOrders.map((item) => (
+            {recentOrders.map((item) => (
               <TableRow key={item.id} className="border-[#edf0f2] hover:bg-[#fffcf2]">
                 <TableCell className="px-4 py-3 font-black text-[#1e2635]">
                   #{item.id.slice(-5).toUpperCase()}
@@ -148,6 +152,13 @@ export function OrderCheckTab() {
                 </TableCell>
               </TableRow>
             ))}
+            {recentOrders.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="h-24 text-center text-[#7b8492]">
+                  Belum ada pesanan terbaru.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>

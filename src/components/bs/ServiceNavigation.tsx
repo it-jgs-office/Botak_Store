@@ -11,6 +11,8 @@ const items = [
   { id: "voucher", label: "Voucher", to: "/voucher", icon: TicketPercent },
 ] as const;
 
+const mobileItems = [items[1], items[2], items[0], items[3], items[4]] as const;
+
 export function ServiceNavigation({
   active,
   mobile = false,
@@ -35,7 +37,7 @@ export function ServiceNavigation({
   if (mobile) {
     return (
       <>
-        {items.map((item) => {
+        {mobileItems.map((item) => {
           const Icon = item.icon;
           const isActive = routeActive === item.id;
           return (

@@ -1,7 +1,9 @@
-/* Preferensi & data tambahan profil — tersimpan murni di localStorage per user. */
+/* Preferensi dan data tambahan profil tersimpan melalui API akun. */
+
+import { fetchProfileExtras, updateProfileExtras } from "./api";
 
 export type ProfileExtras = {
-  avatar?: string; // data URL (base64)
+  avatar?: string | null;
   gameNickname?: string;
   gameUserId?: string;
   gameServerId?: string;
@@ -11,27 +13,13 @@ export type ProfileExtras = {
 
 const DEFAULTS: ProfileExtras = { notifOrder: true, notifPromo: true };
 
-const key = (userId: string) => `bs_profile_extras_${userId}`;
-
-export function getProfileExtras(userId: string): ProfileExtras {
-  if (typeof window === "undefined") return { ...DEFAULTS };
-  try {
-    const raw = window.localStorage.getItem(key(userId));
-    if (!raw) return { ...DEFAULTS };
-    return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<ProfileExtras>) };
-  } catch {
-    return { ...DEFAULTS };
-  }
+export async function getProfileExtras(): Promise<ProfileExtras> {
+  const response = await fetchProfileExtras<ProfileExtras>();
+  return { ...DEFAULTS, ...response.data };
 }
 
-export function saveProfileExtras(userId: string, patch: Partial<ProfileExtras>): ProfileExtras {
-  const next = { ...getProfileExtras(userId), ...patch };
-  window.localStorage.setItem(key(userId), JSON.stringify(next));
-  window.dispatchEvent(new Event("bs-profile-extras"));
-  return next;
-}
-
-export function clearProfileExtras(userId: string) {
-  window.localStorage.removeItem(key(userId));
-  window.dispatchEvent(new Event("bs-profile-extras"));
+export async function saveProfileExtras(patch: Partial<ProfileExtras>): Promise<ProfileExtras> {
+  const current = await getProfileExtras();
+  const response = await updateProfileExtras<ProfileExtras>({ ...current, ...patch });
+  return { ...DEFAULTS, ...response.data };
 }

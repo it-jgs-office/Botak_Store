@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Check,
   ChevronDown,
+  ChevronRight,
   Clock3,
   LoaderCircle,
   LockKeyhole,
@@ -18,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { rupiah } from "@/lib/format";
 import { createPakasirPayment } from "@/lib/api";
 import { recordPakasirOrder } from "@/lib/actions";
+import { quoteCoupon } from "@/lib/coupon";
 import { ACTIVE_PAKASIR_PAYMENT_METHODS, type PakasirMethod } from "@/lib/pakasir";
 import { useDB } from "@/lib/store";
 import { Field } from "./ui";
@@ -44,6 +46,7 @@ const GAME_PUBLISHER: Record<string, string> = {
   "mobile-legends": "Moonton",
 };
 
+/* Non-Mobile Legends packages are intentionally unavailable until their dynamic catalog is added.
 const OTHER_GAME_PRODUCTS: Record<string, JokiProduct[]> = {
   valorant: [],
   pubg: [
@@ -77,6 +80,7 @@ const OTHER_GAME_PRODUCTS: Record<string, JokiProduct[]> = {
     { id: "ef-div2-1", group: "Push Per Divisi", name: "Division 2 → 1", price: 70000, estimate: "1–2 hari", image: "/joki-default/efootball.png" },
   ],
 };
+*/
 
 const TERMS = [
   "Data Akun: Lengkapi data dengan benar, termasuk kapitalisasi huruf.",
@@ -141,12 +145,12 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
     ?? fallbackGame;
   const gameImage = game.listImage || DEFAULT_GAME_IMAGES[game.slug] || DEFAULT_GAME_IMAGES["mobile-legends"];
   const gameCover = game.coverImage || gameImage;
-  const jokiGames = db.games.filter((item) => item.status === "active");
+  const jokiGames = db.games.filter((item) => item.status === "active" && item.slug === "mobile-legends");
   const products: JokiProduct[] = game.slug === "mobile-legends"
     ? db.jokiPackages
         .filter((item) => item.gameSlug === "mobile-legends" && item.status === "active")
         .sort((a, b) => a.sortOrder - b.sortOrder)
-    : (OTHER_GAME_PRODUCTS[game.slug] ?? []);
+    : [];
   const loginMethods = game.slug === "mobile-legends"
     ? LOGIN_METHODS
     : [{ name: `${game.name} ID`, icon: gameImage }];
@@ -159,6 +163,7 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
   const [heroes, setHeroes] = useState("");
   const [paymentId, setPaymentId] = useState<PakasirMethod>("qris");
   const [whatsapp, setWhatsapp] = useState("");
+  const [couponCode, setCouponCode] = useState("");
   const [note, setNote] = useState("");
   const [creatingPayment, setCreatingPayment] = useState(false);
 
@@ -197,8 +202,13 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
     : selectedProduct.perStar
       ? selectedProduct.price * selectedStars
       : selectedProduct.price;
+  const couponQuote = useMemo(
+    () => quoteCoupon(db.coupons, couponCode, subtotal),
+    [couponCode, db.coupons, subtotal],
+  );
+  const discount = couponQuote.discount;
   const paymentFee = 0;
-  const total = subtotal + paymentFee;
+  const total = Math.max(0, subtotal - discount + paymentFee);
   const canSubmit = !!selectedProduct
     && accountId.trim().length > 0
     && password.trim().length > 0
@@ -247,6 +257,10 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
   }
 
   const submit = async () => {
+    if (db.settings.maintenance) {
+      toast.error("Toko sedang dalam pemeliharaan. Transaksi baru sementara ditutup.");
+      return;
+    }
     if (!selectedProduct || !paymentId || !accountId.trim() || !password.trim() || whatsapp.trim().length < 8) {
       toast.error("Lengkapi layanan, data akun, pembayaran, dan nomor WhatsApp.");
       return;
@@ -255,13 +269,18 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
       toast.error("Atur jumlah bintang dulu dengan tombol minus/plus.");
       return;
     }
+    if (couponCode.trim() && couponQuote.error) {
+      toast.error(couponQuote.error);
+      return;
+    }
     setCreatingPayment(true);
     try {
       const payment = await createPakasirPayment({
         order_type: "joki",
         item_id: selectedProduct.id,
         description: `Joki ${game.name} - ${selectedProduct.name}`,
-        amount: total,
+        amount: subtotal,
+        coupon_code: couponQuote.coupon?.code,
         payment_method: paymentId,
         customer: {
           whatsapp: whatsapp.trim(),
@@ -272,7 +291,6 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
           heroes: heroes.trim() || undefined,
           note: note.trim() || undefined,
           quantity: selectedProduct.perStar ? selectedStars : 1,
-          customer_id: db.session?.role === "customer" ? db.session.userId : undefined,
           customer_name: nickname.trim() || undefined,
           game_id: game.id,
           game_name: game.name,
@@ -282,6 +300,9 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
         orderId: payment.order_id,
         transactionId: payment.txn_id,
         amount: payment.total_payment ?? total,
+        baseAmount: payment.base_amount ?? subtotal,
+        discount: payment.discount ?? discount,
+        couponCode: payment.coupon_code ?? undefined,
         method: payment.payment_method,
         game: { id: game.id, name: game.name },
         service: { id: selectedProduct.id, name: `Joki ${selectedProduct.name}` },
@@ -362,8 +383,9 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
           <JokiStep number="1" title="Pilih Layanan" description="Pilih rank atau paket joki yang kamu mau.">
             <p className="text-xs text-[#8490a3]">{products.length} layanan ditemukan</p>
             <div className="mt-4">
-              <div className="overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <div className="flex min-w-max gap-2">
+              <div className="relative">
+                <div className="overflow-x-auto pb-1 pr-10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="flex min-w-max gap-2">
                   {groups.map((group) => {
                     const meta = GROUP_META[group];
                     const groupProducts = products.filter((item) => item.group === group);
@@ -383,7 +405,15 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
                       </button>
                     );
                   })}
+                  </div>
                 </div>
+                {groups.length > 1 && (
+                  <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 flex w-14 items-center justify-end bg-gradient-to-l from-white via-white/95 to-transparent sm:hidden">
+                    <span className="joki-scroll-cue grid h-7 w-7 place-items-center rounded-full border border-[#d7aa00] bg-[#ffd84d] text-[#17191d] shadow-[0_5px_12px_-7px_rgba(138,104,0,.75)]">
+                      <ChevronRight className="h-4 w-4" strokeWidth={3} />
+                    </span>
+                  </div>
+                )}
               </div>
               <div className={`${activeProducts.length ? "" : "hidden"} mt-3 rounded-2xl border border-[#dce3ec] bg-[#fffdf5] p-2 sm:p-4`}>
                 <div className="grid grid-cols-2 gap-1.5 sm:gap-2 lg:grid-cols-3">
@@ -503,9 +533,16 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
               <Field label="Nickname Game (opsional)" hint="Untuk pencocokan saat penjoki login."><Input value={nickname} onChange={(event) => setNickname(event.target.value)} placeholder="Contoh: RRQ Lemon / BotakPro" className="h-11 rounded-2xl border-[#dce3ec] bg-[#f8fafc] text-base sm:h-12 sm:text-sm" /></Field>
               <Field label="Request permainan (opsional)" hint="Tuliskan request khusus untuk penjoki."><Input value={heroes} onChange={(event) => setHeroes(event.target.value)} placeholder="Contoh: karakter, mode, atau strategi pilihan" className="h-11 rounded-2xl border-[#dce3ec] bg-[#f8fafc] text-base sm:h-12 sm:text-sm" /></Field>
             </div>
-            <div className="mt-5 rounded-2xl border border-[#ecd46e] bg-[#fffbed] p-4">
-              <p className="flex items-center gap-2 font-black text-[#715700]"><LockKeyhole className="h-4 w-4" /> Data Login Terenkripsi & Dijamin Aman</p>
-              <p className="mt-1 text-xs leading-5 text-[#68758b]">Data akun dan password disimpan secara rahasia dan hanya dipakai penjoki resmi saat memproses pesanan.</p>
+            <div className="mt-4 rounded-2xl border border-[#ecd46e] bg-[#fffbed] p-3 sm:mt-5 sm:p-4">
+              <div className="flex items-start gap-2.5 sm:gap-3">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-[#ffd84d] text-[#17191d] sm:h-9 sm:w-9">
+                  <LockKeyhole className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 pt-0.5">
+                  <p className="text-xs font-black leading-4 text-[#715700] sm:text-sm sm:leading-5">Data Login Terenkripsi &amp; Dijamin Aman</p>
+                  <p className="mt-1 text-[11px] leading-4 text-[#68758b] sm:text-xs sm:leading-5">Data akun dan password disimpan secara rahasia dan hanya dipakai penjoki resmi saat memproses pesanan.</p>
+                </div>
+              </div>
             </div>
           </JokiStep>
 
@@ -538,9 +575,29 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
                 </button>
               ))}
             </div>
+              <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-[#ecd46e] bg-[#fffbed] px-3 py-2.5 text-xs leading-5 text-[#715700]">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                <span><strong className="font-black">Mode uji coba pembayaran.</strong> Pembayaran belum diproses secara riil.</span>
+              </div>
           </JokiStep>
 
-          <JokiStep number="4" title="Kontak WhatsApp & Catatan" description="Nomor WhatsApp untuk update status dan catatan tambahan.">
+          <JokiStep number="4" title="Voucher" description="Masukkan kode promo jika kamu punya.">
+            <Field label="Kode voucher">
+              <Input
+                value={couponCode}
+                onChange={(event) => setCouponCode(event.target.value.toUpperCase().replace(/\s/g, ""))}
+                placeholder="Contoh: PROMO26"
+                className="h-11 rounded-2xl border-[#dce3ec] bg-[#f8fafc] font-black uppercase text-base sm:h-12 sm:text-sm"
+              />
+            </Field>
+            {couponCode.trim() && (
+              <p className={`mt-2 text-xs font-bold ${couponQuote.error ? "text-red-600" : "text-emerald-700"}`}>
+                {couponQuote.error ?? `Voucher ${couponQuote.coupon?.code} digunakan: hemat ${rupiah(discount)}.`}
+              </p>
+            )}
+          </JokiStep>
+
+          <JokiStep number="5" title="Kontak WhatsApp & Catatan" description="Nomor WhatsApp untuk update status dan catatan tambahan.">
             <Field label="Nomor WhatsApp *" hint="Nomor ini dipakai untuk mengirim update progres pengerjaan joki."><Input value={whatsapp} onChange={(event) => setWhatsapp(event.target.value)} placeholder="0812 3456 7890" inputMode="tel" className="h-11 rounded-2xl border-[#dce3ec] bg-[#f8fafc] text-base sm:h-12 sm:text-sm" /></Field>
             <label className="mt-4 block"><span className="text-xs font-black text-[#202738] sm:text-sm">Catatan Tambahan untuk Penjoki (opsional)</span><textarea value={note} onChange={(event) => setNote(event.target.value.slice(0, 300))} rows={4} className="mt-2 w-full resize-none rounded-2xl border border-[#dce3ec] bg-[#f8fafc] px-4 py-3 text-base outline-none focus:border-[#d7aa00] focus:ring-2 focus:ring-[#ffd84d]/30 sm:text-sm" /><span className="mt-1 block text-right text-xs text-[#8490a3]">{note.length}/300</span></label>
           </JokiStep>
@@ -562,9 +619,10 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
             )}
             <SummaryRow label="Pembayaran" value={selectedPayment?.name ?? "Belum dipilih"} />
             <SummaryRow label="Subtotal" value={rupiah(subtotal)} />
+            {discount > 0 && <SummaryRow label={`Diskon (${couponQuote.coupon?.code})`} value={`-${rupiah(discount)}`} />}
             <SummaryRow label="Biaya admin" value={selectedPayment ? rupiah(paymentFee) : "—"} />
             <div className="mt-4 flex items-center justify-between border-t border-[#e5eaf0] pt-4"><span className="font-black">Total Bayar</span><span className="text-xl font-black text-[#8a6800]">{rupiah(total)}</span></div>
-            <Button type="button" size="lg" onClick={submit} disabled={creatingPayment} className="mt-5 w-full bg-[#ffd84d] font-black text-[#17191d] hover:bg-[#f2c425]">{creatingPayment ? <LoaderCircle className="animate-spin" /> : <Trophy />}{creatingPayment ? "Membuat invoice..." : "Pesan Joki Sekarang"}</Button>
+            <Button type="button" size="lg" onClick={submit} disabled={creatingPayment || db.settings.maintenance} className="mt-5 w-full bg-[#ffd84d] font-black text-[#17191d] hover:bg-[#f2c425]">{creatingPayment ? <LoaderCircle className="animate-spin" /> : <Trophy />}{creatingPayment ? "Membuat invoice..." : "Pesan Joki Sekarang"}</Button>
             <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-[#718096]"><ShieldCheck className="h-4 w-4" /> Akun 100% aman</p>
           </div>
         </aside>
@@ -580,7 +638,7 @@ export function JokiTab({ gameSlug }: { gameSlug?: string }) {
           <Button
             type="button"
             onClick={submit}
-            disabled={creatingPayment || !canSubmit}
+            disabled={creatingPayment || !canSubmit || db.settings.maintenance}
             className="h-10 shrink-0 bg-[#ffd84d] px-4 text-sm font-black text-[#17191d] hover:bg-[#f2c425] disabled:opacity-50"
           >
             {creatingPayment ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trophy className="h-4 w-4" />}

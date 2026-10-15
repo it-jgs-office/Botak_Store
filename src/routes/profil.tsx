@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
+  BellRing,
   CalendarDays,
   CheckCircle2,
   Copy,
@@ -23,6 +24,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,7 +37,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { LogoutConfirmDialog, PublicLayout } from "@/components/bs/PublicLayout";
 import { Field, useHydrated, useSession } from "@/components/bs/ui";
-import { changePassword, deleteAccount, logout, updateProfile } from "@/lib/actions";
+import { changePassword, deleteAccount, logout, restoreSession, updateProfile } from "@/lib/actions";
+import { getProfileExtras, saveProfileExtras, type ProfileExtras } from "@/lib/profile-extras";
 import { useDB } from "@/lib/store";
 import { rupiah } from "@/lib/format";
 import type { Order } from "@/lib/types";
@@ -54,6 +57,16 @@ export const Route = createFileRoute("/profil")({
 
 type TxGroup = "semua" | "menunggu" | "diproses" | "berhasil" | "gagal";
 type ProfileSection = "voucher" | "riwayat" | "pengaturan";
+
+function profileExtrasSignature(extras: ProfileExtras) {
+  return [
+    extras.gameNickname ?? "",
+    extras.gameUserId ?? "",
+    extras.gameServerId ?? "",
+    extras.notifOrder,
+    extras.notifPromo,
+  ].join("|");
+}
 
 function txGroup(order: Order): Exclude<TxGroup, "semua"> {
   if (order.status === "completed") return "berhasil";
@@ -91,10 +104,48 @@ function ProfilPage() {
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [profileExtras, setProfileExtras] = useState<ProfileExtras>({
+    avatar: null,
+    gameNickname: "",
+    gameUserId: "",
+    gameServerId: "",
+    notifOrder: true,
+    notifPromo: true,
+  });
+  const [savedProfileExtras, setSavedProfileExtras] = useState<ProfileExtras>({
+    avatar: null,
+    gameNickname: "",
+    gameUserId: "",
+    gameServerId: "",
+    notifOrder: true,
+    notifPromo: true,
+  });
+  const [savingExtras, setSavingExtras] = useState(false);
 
   useEffect(() => {
     if (hydrated && !session) navigate({ to: "/login", replace: true });
   }, [hydrated, navigate, session]);
+
+  useEffect(() => {
+    if (!hydrated || session?.role !== "customer") return;
+
+    let active = true;
+    void restoreSession();
+    void getProfileExtras()
+      .then((extras) => {
+        if (active) {
+          setProfileExtras(extras);
+          setSavedProfileExtras(extras);
+        }
+      })
+      .catch(() => {
+        if (active) toast.error("Data preferensi profil belum dapat dimuat.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [hydrated, session?.role, session?.userId]);
 
   useEffect(() => {
     if (user) {
@@ -116,7 +167,11 @@ function ProfilPage() {
     return <div className="min-h-screen bg-background" />;
   }
 
-  const activeOrders = orders.filter((o) => txGroup(o) === "diproses");
+  const activeOrders = orders.filter(
+    (o) =>
+      txGroup(o) === "diproses" &&
+      o.detail.serviceName.toLocaleLowerCase("id-ID").startsWith("joki "),
+  );
   const totalSpent = orders
     .filter((o) => o.paymentStatus === "paid")
     .reduce((sum, o) => sum + o.price.total, 0);
@@ -125,7 +180,9 @@ function ProfilPage() {
     ...t,
     count: t.id === "semua" ? orders.length : orders.filter((o) => txGroup(o) === t.id).length,
   }));
-  const vouchers = db.coupons.filter((c) => c.active && c.used < c.quota);
+  const vouchers = db.coupons.filter(
+    (coupon) => coupon.active && coupon.used < coupon.quota && new Date(coupon.expiresAt).getTime() > Date.now(),
+  );
   const firstName = user.name.trim().split(/\s+/)[0] ?? user.name;
   const initials = user.name
     .trim()
@@ -147,6 +204,7 @@ function ProfilPage() {
     /\d/.test(passwords.next),
     /[^A-Za-z0-9]/.test(passwords.next),
   ].filter(Boolean).length;
+  const extrasChanged = profileExtrasSignature(profileExtras) !== profileExtrasSignature(savedProfileExtras);
 
   const save = async () => {
     if (form.name.trim().length < 3) {
@@ -179,6 +237,26 @@ function ProfilPage() {
     toast.success("Kata sandi berhasil diganti.");
   };
 
+  const saveExtras = async () => {
+    setSavingExtras(true);
+    try {
+      const saved = await saveProfileExtras({
+        gameNickname: profileExtras.gameNickname.trim(),
+        gameUserId: profileExtras.gameUserId.trim(),
+        gameServerId: profileExtras.gameServerId.trim(),
+        notifOrder: profileExtras.notifOrder,
+        notifPromo: profileExtras.notifPromo,
+      });
+      setProfileExtras(saved);
+      setSavedProfileExtras(saved);
+      toast.success("Preferensi akun berhasil disimpan.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Preferensi akun gagal disimpan.");
+    } finally {
+      setSavingExtras(false);
+    }
+  };
+
   const removeAccount = async () => {
     setDeleting(true);
     const result = await deleteAccount(user.id);
@@ -203,44 +281,50 @@ function ProfilPage() {
     <PublicLayout banner="none" showFaq={false}>
       <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-4 sm:py-8 md:py-12">
         {/* ===== Header profil ===== */}
-        <section className="overflow-hidden rounded-3xl border border-border bg-white shadow-card">
-          <div className="h-20 bg-[#151a20] sm:h-28" />
-          <div className="relative px-4 pb-5 sm:px-8 sm:pb-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-              <div className="flex items-end gap-4">
-                <div className="relative -mt-10 sm:-mt-12">
-                  <span className="grid h-16 w-16 place-items-center rounded-2xl border-4 border-white bg-[#151a20] text-xl font-black text-[#ffd84d] shadow-md sm:h-24 sm:w-24 sm:rounded-3xl sm:text-3xl">
-                    {initials}
-                  </span>
+        <section className="rounded-2xl border border-border bg-white p-4 shadow-card sm:rounded-3xl sm:p-7">
+            <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                <div className="shrink-0">
+                  {profileExtras.avatar ? (
+                    <img
+                      src={profileExtras.avatar}
+                      alt={`Foto profil ${user.name}`}
+                      className="h-14 w-14 rounded-2xl object-cover shadow-md sm:h-20 sm:w-20 sm:rounded-3xl"
+                    />
+                  ) : (
+                    <span className="grid h-14 w-14 place-items-center rounded-2xl bg-[#151a20] text-lg font-black text-[#ffd84d] shadow-md sm:h-20 sm:w-20 sm:rounded-3xl sm:text-2xl">
+                      {initials}
+                    </span>
+                  )}
                 </div>
-                <div className="pb-1">
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">Halo, {firstName}! 👋</p>
-                  <h1 className="mt-0.5 text-xl font-black sm:text-3xl">{user.name}</h1>
+                  <h1 className="truncate text-lg font-black sm:mt-0.5 sm:text-3xl">{user.name}</h1>
                 </div>
               </div>
               <Button
                 type="button"
                 variant="outline"
-                className="w-fit"
+                className="h-10 w-full sm:h-11 sm:w-fit"
                 onClick={() => setLogoutOpen(true)}
               >
                 <LogOut /> Keluar
               </Button>
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+            <div className="mt-4 grid min-w-0 gap-2 text-xs text-muted-foreground sm:flex sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-2 sm:text-sm">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[#fff4c5] px-3 py-1 text-xs font-black text-[#8b6900]">
                 <ShieldCheck className="h-3.5 w-3.5" /> Member
               </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Mail className="h-4 w-4" /> {user.email}
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <Mail className="h-4 w-4 shrink-0" /> <span className="truncate">{user.email}</span>
               </span>
               {user.phone && (
-                <span className="inline-flex items-center gap-1.5">
-                  <Phone className="h-4 w-4" /> {formattedPhone}
+                <span className="inline-flex min-w-0 items-center gap-1.5">
+                  <Phone className="h-4 w-4 shrink-0" /> <span className="truncate">{formattedPhone}</span>
                 </span>
               )}
-              <span className="inline-flex items-center gap-1.5">
-                <CalendarDays className="h-4 w-4" /> Member sejak{" "}
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <CalendarDays className="h-4 w-4 shrink-0" /> Member sejak{" "}
                 {new Date(user.createdAt).toLocaleDateString("id-ID", {
                   day: "numeric",
                   month: "short",
@@ -248,7 +332,6 @@ function ProfilPage() {
                 })}
               </span>
             </div>
-          </div>
         </section>
 
         {/* ===== Statistik ===== */}
@@ -323,7 +406,7 @@ function ProfilPage() {
               </Button>
             </div>
           ) : (
-            <div className="mt-4 grid grid-cols-2 gap-2.5 sm:gap-4">
+            <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-4">
               {vouchers.map((v) => (
                 <div
                   key={v.code}
@@ -332,7 +415,7 @@ function ProfilPage() {
                   <div className="min-w-0">
                     <p className="text-lg font-black tracking-wide">{v.code}</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Diskon {v.percent}% · sisa {v.quota - v.used} kode
+                      Diskon {v.type === "percent" ? `${v.value}%` : rupiah(v.value)} · sisa {v.quota - v.used} kode
                     </p>
                   </div>
                   <Button
@@ -502,6 +585,51 @@ function ProfilPage() {
                   {profileChanged ? "Perubahan belum disimpan" : "Belum ada perubahan"}
                 </span>
               </div>
+
+              <div className="mt-6 border-t border-border pt-5">
+                <h4 className="flex items-center gap-2 font-black">
+                  <Gamepad2 className="h-4 w-4 text-[#9a7600]" /> Data akun game
+                </h4>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Data ini tersimpan aman di profil akunmu.
+                </p>
+                <div className="mt-4 space-y-3">
+                  <Field label="Nickname game (opsional)">
+                    <Input
+                      value={profileExtras.gameNickname ?? ""}
+                      onChange={(event) =>
+                        setProfileExtras((current) => ({ ...current, gameNickname: event.target.value }))
+                      }
+                      placeholder="Nama dalam game"
+                      className="h-10"
+                    />
+                  </Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="User ID">
+                      <Input
+                        value={profileExtras.gameUserId ?? ""}
+                        onChange={(event) =>
+                          setProfileExtras((current) => ({ ...current, gameUserId: event.target.value }))
+                        }
+                        placeholder="User ID"
+                        inputMode="numeric"
+                        className="h-10"
+                      />
+                    </Field>
+                    <Field label="Server / Zone">
+                      <Input
+                        value={profileExtras.gameServerId ?? ""}
+                        onChange={(event) =>
+                          setProfileExtras((current) => ({ ...current, gameServerId: event.target.value }))
+                        }
+                        placeholder="Zone"
+                        inputMode="numeric"
+                        className="h-10"
+                      />
+                    </Field>
+                  </div>
+                </div>
+              </div>
             </section>
 
             <section className="rounded-xl border border-border bg-[#fafbfc] p-4 sm:rounded-2xl sm:p-6">
@@ -572,6 +700,45 @@ function ProfilPage() {
             </section>
 
           </div>
+
+          <section className="mt-4 rounded-xl border border-border bg-[#fafbfc] p-4 sm:mt-6 sm:rounded-2xl sm:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="flex items-center gap-2 text-lg font-black">
+                  <BellRing className="h-5 w-5 text-[#9a7600]" /> Notifikasi akun
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">Atur pemberitahuan yang ingin kamu terima.</p>
+              </div>
+              <Button type="button" onClick={() => void saveExtras()} disabled={savingExtras} className="text-[#17191d]">
+                <Save /> {savingExtras ? "Menyimpan..." : "Simpan preferensi"}
+              </Button>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-border bg-white px-4 py-3">
+                <span>
+                  <span className="block text-sm font-black">Update pesanan</span>
+                  <span className="block text-xs text-muted-foreground">Status pembayaran dan proses pesanan.</span>
+                </span>
+                <Switch
+                  checked={profileExtras.notifOrder}
+                  onCheckedChange={(checked) => setProfileExtras((current) => ({ ...current, notifOrder: checked }))}
+                  aria-label="Notifikasi update pesanan"
+                />
+              </label>
+              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-border bg-white px-4 py-3">
+                <span>
+                  <span className="block text-sm font-black">Promo & voucher</span>
+                  <span className="block text-xs text-muted-foreground">Info diskon dan voucher terbaru.</span>
+                </span>
+                <Switch
+                  checked={profileExtras.notifPromo}
+                  onCheckedChange={(checked) => setProfileExtras((current) => ({ ...current, notifPromo: checked }))}
+                  aria-label="Notifikasi promo dan voucher"
+                />
+              </label>
+            </div>
+            {extrasChanged && <p className="mt-3 text-xs text-muted-foreground">Perubahan preferensi belum disimpan.</p>}
+          </section>
 
           {user.role !== "admin" && (
             <section className="mt-4 flex flex-col gap-4 rounded-xl border border-red-200 bg-red-50 p-4 sm:mt-6 sm:flex-row sm:items-center sm:justify-between sm:rounded-2xl sm:p-5">

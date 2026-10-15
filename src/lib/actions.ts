@@ -1,4 +1,4 @@
-import { getDB, updateStoredData } from "./store";
+import { getDB, hydrateCustomerData, updateStoredData } from "./store";
 import {
   apiChangePassword,
   apiDeleteAccount,
@@ -8,7 +8,7 @@ import {
   apiRegister,
   apiUpdateProfile,
   clearApiSession,
-  getJwtToken,
+  getStoredAuthUser,
   type ApiUser,
 } from "./api";
 import { calcPrice } from "./pricing";
@@ -21,7 +21,6 @@ import type {
   Game,
   JokiService,
   JokiPackage,
-  JokierProfile,
   Notification,
   Order,
   OrderStatus,
@@ -29,8 +28,6 @@ import type {
   RefundStatus,
   Role,
   StoreSettings,
-  SupportTicket,
-  TicketStatus,
 } from "./types";
 
 const now = () => new Date().toISOString();
@@ -84,10 +81,11 @@ export function logout() {
 }
 
 export async function restoreSession() {
-  if (!getJwtToken()) return;
+  if (!getStoredAuthUser()) return;
   try {
     const response = await apiMe();
     applyApiUser(response.user);
+    if (response.user.role === "customer") await hydrateCustomerData();
   } catch {
     clearApiSession();
     updateStoredData(() => ({ session: null }));
@@ -170,21 +168,19 @@ export function markAllRead(userId: string) {
 
 /* ---------------- Order state machine ---------------- */
 export const TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  waiting_payment: ["waiting_assignment", "cancelled"],
-  waiting_assignment: ["waiting_confirmation", "cancelled"],
-  waiting_confirmation: ["assigned", "waiting_assignment", "cancelled"],
-  assigned: ["in_progress", "waiting_assignment", "cancelled"],
-  in_progress: ["on_hold", "pending_verification", "cancelled"],
-  on_hold: ["in_progress", "cancelled"],
-  pending_verification: ["completed", "in_progress"],
+  waiting_payment: ["in_progress", "cancelled"],
+  waiting_assignment: ["in_progress", "cancelled"],
+  waiting_confirmation: ["in_progress", "cancelled"],
+  assigned: ["in_progress", "cancelled"],
+  in_progress: ["completed", "cancelled"],
+  on_hold: ["in_progress", "completed", "cancelled"],
+  pending_verification: ["in_progress", "completed", "cancelled"],
   completed: [],
   cancelled: [],
 };
 export const canTransition = (from: OrderStatus, to: OrderStatus) => TRANSITIONS[from].includes(to);
 
-function jokierUserId(d: DB, jokierId?: string) {
-  return d.jokiers.find((j) => j.id === jokierId)?.userId;
-}
+const isJokiOrder = (order: Order) => order.detail.serviceName.toLowerCase().startsWith("joki ");
 
 /** The single entry point for every order status change. */
 export function changeOrderStatus(
@@ -197,24 +193,26 @@ export function changeOrderStatus(
   const d = getDB();
   const o = d.orders.find((x) => x.id === orderId);
   if (!o) return fail("Pesanan tidak ditemukan.");
-  if (!canTransition(o.status, to))
+  const canCompletePaidJoki = isJokiOrder(o)
+    && o.paymentStatus === "paid"
+    && to === "completed"
+    && !["completed", "cancelled"].includes(o.status);
+  if (!canTransition(o.status, to) && !canCompletePaidJoki)
     return fail(
       `Transisi tidak valid: ${ORDER_STATUS_META[o.status].label} → ${ORDER_STATUS_META[to].label}.`,
     );
   if (
     o.status === "waiting_payment" &&
-    to === "waiting_assignment" &&
+    to === "in_progress" &&
     o.paymentStatus !== "paid" &&
     opts.patch?.paymentStatus !== "paid"
   )
     return fail("Pesanan belum dibayar.");
   const label = ORDER_STATUS_META[to].label;
   const message = opts.message || `Status berubah menjadi ${label}.`;
-  const progress = to === "pending_verification" ? 100 : (opts.progress ?? o.progress);
+  const progress = to === "completed" ? 100 : (opts.progress ?? o.progress);
   const updated: Order = { ...o, ...opts.patch, status: to, progress, updatedAt: now() };
   const recipients = new Set<string>([o.customerId, "u-admin"]);
-  const ju = jokierUserId(d, updated.jokierId);
-  if (ju) recipients.add(ju);
   if (opts.by === "admin") recipients.delete("u-admin");
   updateStoredData((x) => ({
     orders: x.orders.map((y) => (y.id === orderId ? updated : y)),
@@ -401,6 +399,9 @@ export function recordPakasirOrder(input: {
   orderId: string;
   transactionId: string;
   amount: number;
+  baseAmount?: number;
+  discount?: number;
+  couponCode?: string;
   method: string;
   game: { id: string; name: string };
   service: { id: string; name: string };
@@ -457,7 +458,13 @@ export function recordPakasirOrder(input: {
         priority: false,
         notes: input.note,
       },
-      price: { base: input.amount, addons: [], discount: 0, total: input.amount },
+      price: {
+        base: input.baseAmount ?? input.amount,
+        addons: [],
+        discount: input.discount ?? 0,
+        couponCode: input.couponCode,
+        total: input.amount,
+      },
       paymentMethod,
       paymentStatus: "pending",
       status: "waiting_payment",
@@ -494,9 +501,9 @@ export function simulatePayment(orderId: string, outcome: "paid" | "failed" | "e
     payments: x.payments.map((p) => (p.orderId === orderId ? { ...p, status: outcome } : p)),
   }));
   if (outcome === "paid") {
-    return changeOrderStatus(orderId, "waiting_assignment", {
+    return changeOrderStatus(orderId, "in_progress", {
       by: "system",
-      message: "Pembayaran demo berhasil. Pesanan menunggu penjoki.",
+      message: "Pembayaran demo berhasil. Pesanan sedang diproses.",
       patch: { paymentStatus: "paid" },
     });
   }
@@ -523,62 +530,6 @@ export function retryPayment(orderId: string) {
       y.id === orderId && y.status === "waiting_payment" ? { ...y, paymentStatus: "pending" } : y,
     ),
   }));
-}
-
-/* ---------------- Assignment ---------------- */
-export function activeTasks(d: DB, jokierId: string) {
-  return d.orders.filter(
-    (o) =>
-      o.jokierId === jokierId &&
-      ["waiting_confirmation", "assigned", "in_progress", "on_hold"].includes(o.status),
-  ).length;
-}
-
-export function assignJokier(orderId: string, jokierId: string): Result {
-  const d = getDB();
-  const o = d.orders.find((x) => x.id === orderId);
-  const j = d.jokiers.find((x) => x.id === jokierId);
-  if (!o || !j) return fail("Data tidak ditemukan.");
-  if (!j.gameIds.includes(o.detail.gameId)) return fail("Penjoki tidak menguasai game ini.");
-  if (j.status === "offline") return fail("Penjoki sedang offline.");
-  if (activeTasks(d, j.id) >= j.capacity) return fail("Kapasitas penjoki penuh.");
-  const r = changeOrderStatus(orderId, "waiting_confirmation", {
-    by: "admin",
-    message: `Tugas ditawarkan ke ${j.name}.`,
-    patch: { jokierId },
-  });
-  if (!r.ok) return r;
-  updateStoredData((x) => ({
-    assignments: [
-      ...x.assignments,
-      { id: uid("as"), orderId, jokierId, status: "pending", createdAt: now() },
-    ],
-    notifications: [
-      notif(j.userId, "Penawaran tugas baru", `${orderId} — ${o.detail.serviceName}`, orderId),
-      ...x.notifications,
-    ],
-  }));
-  return { ok: true, data: undefined };
-}
-
-export function respondAssignment(orderId: string, accept: boolean, note?: string): Result {
-  const d = getDB();
-  const o = d.orders.find((x) => x.id === orderId);
-  if (!o || o.status !== "waiting_confirmation") return fail("Tidak ada penawaran aktif.");
-  updateStoredData((x) => ({
-    assignments: x.assignments.map((a) =>
-      a.orderId === orderId && a.status === "pending"
-        ? { ...a, status: accept ? "accepted" : "rejected", note }
-        : a,
-    ),
-  }));
-  return accept
-    ? changeOrderStatus(orderId, "assigned", { by: "jokier", message: "Penjoki menerima tugas." })
-    : changeOrderStatus(orderId, "waiting_assignment", {
-        by: "jokier",
-        message: `Penjoki menolak tugas${note ? `: ${note}` : "."}`,
-        patch: { jokierId: undefined },
-      });
 }
 
 /* ---------------- Refunds ---------------- */
@@ -653,65 +604,6 @@ export function setRefundStatus(id: string, status: RefundStatus, adminNote?: st
   return { ok: true, data: undefined };
 }
 
-/* ---------------- Tickets ---------------- */
-export function createTicket(
-  t: Pick<SupportTicket, "orderId" | "subject" | "category" | "priority"> & {
-    customerId: string;
-    name: string;
-    text: string;
-  },
-): Result<string> {
-  if (t.subject.trim().length < 5) return fail("Subjek minimal 5 karakter.");
-  if (t.text.trim().length < 10) return fail("Pesan minimal 10 karakter.");
-  const id = `TK-${1000 + getDB().tickets.length + 1}`;
-  updateStoredData((x) => ({
-    tickets: [
-      {
-        id,
-        orderId: t.orderId,
-        customerId: t.customerId,
-        subject: t.subject,
-        category: t.category,
-        priority: t.priority,
-        status: "open",
-        messages: [
-          { id: uid("m"), from: "customer", name: t.name, text: t.text, createdAt: now() },
-        ],
-        createdAt: now(),
-      },
-      ...x.tickets,
-    ],
-    notifications: [notif("u-admin", `Komplain baru ${id}`, t.subject), ...x.notifications],
-  }));
-  return { ok: true, data: id };
-}
-export function replyTicket(id: string, from: Role, name: string, text: string): Result {
-  if (!text.trim()) return fail("Pesan kosong.");
-  const tk = getDB().tickets.find((x) => x.id === id);
-  if (!tk) return fail("Tiket tidak ditemukan.");
-  updateStoredData((x) => ({
-    tickets: x.tickets.map((y) =>
-      y.id === id
-        ? {
-            ...y,
-            status: from === "admin" ? "waiting_customer" : "open",
-            messages: [...y.messages, { id: uid("m"), from, name, text, createdAt: now() }],
-          }
-        : y,
-    ),
-    notifications: [
-      notif(from === "admin" ? tk.customerId : "u-admin", `Balasan tiket ${id}`, text.slice(0, 80)),
-      ...x.notifications,
-    ],
-  }));
-  return { ok: true, data: undefined };
-}
-export function setTicketStatus(id: string, status: TicketStatus) {
-  updateStoredData((x) => ({
-    tickets: x.tickets.map((y) => (y.id === id ? { ...y, status } : y)),
-  }));
-}
-
 /* ---------------- Catalog CRUD ---------------- */
 export function upsertGame(g: Game) {
   updateStoredData((x) => ({
@@ -739,13 +631,6 @@ export function upsertJokiPackage(item: JokiPackage) {
 export function deleteJokiPackage(id: string) {
   updateStoredData((state) => ({
     jokiPackages: state.jokiPackages.filter((item) => item.id !== id),
-  }));
-}
-export function upsertJokier(j: JokierProfile) {
-  updateStoredData((x) => ({
-    jokiers: x.jokiers.some((y) => y.id === j.id)
-      ? x.jokiers.map((y) => (y.id === j.id ? j : y))
-      : [...x.jokiers, j],
   }));
 }
 export function upsertCoupon(c: Coupon): Result {

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { ORDER_STATUS_META, PAYMENT_STATUS_META, type Tone } from "@/lib/format";
 import type { Game, OrderStatus, PaymentStatus } from "@/lib/types";
 import { useDB } from "@/lib/store";
-import { getJwtToken } from "@/lib/api";
+import { getStoredAuthUser } from "@/lib/api";
 
 const toneCls: Record<Tone, string> = {
   neutral: "bg-muted text-muted-foreground border-border",
@@ -142,7 +142,7 @@ export function useHydrated() {
 
 export function useSession() {
   const db = useDB();
-  const session = getJwtToken() ? db.session : null;
+  const session = getStoredAuthUser() ? db.session : null;
   const user = session ? db.users.find((item) => item.id === session.userId) : undefined;
   return { session, user, db };
 }

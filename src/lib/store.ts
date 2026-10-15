@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { buildSeed } from "./seed";
-import { fetchAdminCustomers, fetchAdminState, fetchStoreState, getStoredAuthUser, saveAdminState } from "./api";
+import { fetchAdminCustomers, fetchAdminOperations, fetchAdminState, fetchCustomerData, fetchStoreState, getStoredAuthUser, saveAdminOperations, saveAdminState } from "./api";
 import type { DB } from "./types";
 
 /**
@@ -29,30 +29,33 @@ const KEYS: Record<keyof DB, string> = {
 };
 const INIT_KEY = PREFIX + "demo_initialized";
 const MLBB_ONLY_KEY = PREFIX + "joki_games_v3";
-const SYNC_KEYS = [
+const DYNAMIC_DATA_KEY = PREFIX + "dynamic_data_v1";
+const CATALOG_SYNC_KEYS = [
   "users",
   "games",
   "services",
   "jokiPackages",
-  "orders",
-  "payments",
-  "jokiers",
-  "assignments",
-  "logs",
-  "tickets",
-  "refunds",
-  "notifications",
   "coupons",
   "banners",
   "settings",
 ] as const satisfies readonly (keyof DB)[];
-type ApiStoreState = Pick<DB, (typeof SYNC_KEYS)[number]>;
+const OPERATION_SYNC_KEYS = [
+  "orders",
+  "payments",
+  "logs",
+  "refunds",
+  "notifications",
+] as const satisfies readonly (keyof DB)[];
+const SYNC_KEYS = [...CATALOG_SYNC_KEYS, ...OPERATION_SYNC_KEYS] as const;
+type ApiStoreState = Pick<DB, (typeof CATALOG_SYNC_KEYS)[number]>;
+type ApiOperationState = Pick<DB, (typeof OPERATION_SYNC_KEYS)[number]>;
 type PublicStoreState = Pick<DB, "games" | "services" | "jokiPackages" | "coupons" | "banners" | "settings">;
 
 const SERVER_DB = buildSeed();
 let db: DB = SERVER_DB;
 let loaded = false;
-let syncTimer: ReturnType<typeof setTimeout> | undefined;
+let catalogSyncTimer: ReturnType<typeof setTimeout> | undefined;
+let operationSyncTimer: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<() => void>();
 
 function normalizeMlbbData(source: DB): DB {
@@ -70,7 +73,20 @@ function normalizeMlbbData(source: DB): DB {
   SERVER_DB.services.forEach((service) => {
     if (!services.some((item) => item.id === service.id)) services.push(service);
   });
-  const orders = source.orders.filter((order) => allowedGameIds.has(order.detail.gameId));
+  const legacyProcessingStatuses = new Set([
+    "waiting_assignment",
+    "waiting_confirmation",
+    "assigned",
+    "on_hold",
+    "pending_verification",
+  ]);
+  const orders = source.orders
+    .filter((order) => allowedGameIds.has(order.detail.gameId))
+    .map((order) =>
+      order.paymentStatus === "paid" && legacyProcessingStatuses.has(order.status)
+        ? { ...order, status: "in_progress" as const }
+        : order,
+    );
   const orderIds = new Set(orders.map((order) => order.id));
 
   return {
@@ -80,46 +96,55 @@ function normalizeMlbbData(source: DB): DB {
     services: services.length ? services : SERVER_DB.services,
     orders,
     payments: source.payments.filter((payment) => orderIds.has(payment.orderId)),
-    assignments: source.assignments.filter((assignment) => orderIds.has(assignment.orderId)),
+    assignments: [],
     logs: source.logs.filter((log) => orderIds.has(log.orderId)),
-    tickets: source.tickets.filter((ticket) => !ticket.orderId || orderIds.has(ticket.orderId)),
+    tickets: [],
     refunds: source.refunds.filter((refund) => orderIds.has(refund.orderId)),
     notifications: source.notifications.filter(
       (notification) => !notification.link || !notification.link.startsWith("BS-") || orderIds.has(notification.link),
     ),
-    jokiers: source.jokiers.map((jokier) => ({
-      ...jokier,
-      gameIds: jokier.gameIds.filter((gameId) => allowedGameIds.has(gameId)),
-    })),
+    jokiers: [],
   };
 }
 
 function apiState(source: DB): ApiStoreState {
   return {
-    users: source.users.map(({ password: _password, ...user }) => user),
+    users: source.users
+      .filter((user) => user.role !== "jokier")
+      .map(({ password: _password, ...user }) => user),
     games: source.games,
     services: source.services,
     jokiPackages: source.jokiPackages,
-    orders: source.orders,
-    payments: source.payments,
-    jokiers: source.jokiers,
-    assignments: source.assignments,
-    logs: source.logs,
-    tickets: source.tickets,
-    refunds: source.refunds,
-    notifications: source.notifications,
     coupons: source.coupons,
     banners: source.banners,
     settings: source.settings,
   };
 }
 
-function queueApiSync() {
+function operationState(source: DB): ApiOperationState {
+  return {
+    orders: source.orders,
+    payments: source.payments,
+    logs: source.logs,
+    refunds: source.refunds,
+    notifications: source.notifications,
+  };
+}
+
+function queueApiSync(changedKeys: readonly (keyof DB)[]) {
   if (getStoredAuthUser()?.role !== "admin") return;
-  if (syncTimer) clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => {
-    void saveAdminState(apiState(db)).catch(() => undefined);
-  }, 400);
+  if (changedKeys.some((key) => CATALOG_SYNC_KEYS.includes(key as (typeof CATALOG_SYNC_KEYS)[number]))) {
+    if (catalogSyncTimer) clearTimeout(catalogSyncTimer);
+    catalogSyncTimer = setTimeout(() => {
+      void saveAdminState(apiState(db)).catch(() => undefined);
+    }, 400);
+  }
+  if (changedKeys.some((key) => OPERATION_SYNC_KEYS.includes(key as (typeof OPERATION_SYNC_KEYS)[number]))) {
+    if (operationSyncTimer) clearTimeout(operationSyncTimer);
+    operationSyncTimer = setTimeout(() => {
+      void saveAdminOperations(operationState(db)).catch(() => undefined);
+    }, 400);
+  }
 }
 
 function hasLS() {
@@ -211,6 +236,20 @@ export function initializeDemoData() {
       setStoredData("users", next.users);
     }
 
+    if (localStorage.getItem(DYNAMIC_DATA_KEY) !== "true") {
+      next.orders = [];
+      next.payments = [];
+      next.jokiers = [];
+      next.assignments = [];
+      next.logs = [];
+      next.tickets = [];
+      next.refunds = [];
+      next.notifications = [];
+      (["orders", "payments", "jokiers", "assignments", "logs", "tickets", "refunds", "notifications"] as const)
+        .forEach((key) => setStoredData(key, next[key]));
+      localStorage.setItem(DYNAMIC_DATA_KEY, "true");
+    }
+
     if (localStorage.getItem(MLBB_ONLY_KEY) !== "true") {
       const normalized = normalizeMlbbData(next);
       (Object.keys(KEYS) as (keyof DB)[]).forEach((key) => setStoredData(key, normalized[key] as never));
@@ -241,8 +280,9 @@ export function updateStoredData(fn: (d: DB) => Partial<DB>) {
   db = { ...db, ...patch };
   (Object.keys(patch) as (keyof DB)[]).forEach((k) => setStoredData(k, db[k] as never));
   listeners.forEach((l) => l());
-  if (Object.keys(patch).some((key) => SYNC_KEYS.includes(key as (typeof SYNC_KEYS)[number]))) {
-    queueApiSync();
+  const changedKeys = Object.keys(patch) as (keyof DB)[];
+  if (changedKeys.some((key) => SYNC_KEYS.includes(key as (typeof SYNC_KEYS)[number]))) {
+    queueApiSync(changedKeys);
   }
 }
 
@@ -250,35 +290,41 @@ export async function hydrateAdminState() {
   ensureLoaded();
   if (getStoredAuthUser()?.role !== "admin") return;
 
-  const [response, customersResponse] = await Promise.all([
+  const [response, operationsResponse, customersResponse] = await Promise.all([
     fetchAdminState<ApiStoreState>(),
+    fetchAdminOperations<ApiOperationState>(),
     fetchAdminCustomers(),
   ]);
   const customers = customersResponse.data.map((customer) => ({
     ...customer,
     createdAt: customer.createdAt ?? new Date().toISOString(),
+    profileExtras: customer.profileExtras,
   }));
   const users = (response.data?.users ?? db.users)
     .filter((user) => user.role !== "customer")
     .concat(customers);
 
   if (!response.data) {
-    db = { ...db, users };
+    db = { ...db, ...(operationsResponse.data ?? {}), users };
     setStoredData("users", db.users);
+    OPERATION_SYNC_KEYS.forEach((key) => setStoredData(key, db[key] as never));
     listeners.forEach((listener) => listener());
     await saveAdminState(apiState(db));
+    if (!operationsResponse.data) await saveAdminOperations(operationState(db));
     return;
   }
 
   db = normalizeMlbbData({
     ...db,
     ...response.data,
+    ...(operationsResponse.data ?? operationState(db)),
     users,
     session: db.session,
     draft: db.draft,
   });
   SYNC_KEYS.forEach((key) => setStoredData(key, db[key] as never));
   listeners.forEach((listener) => listener());
+  if (!operationsResponse.data) await saveAdminOperations(operationState(db));
 }
 
 export async function hydrateStorefrontState() {
@@ -293,10 +339,31 @@ export async function hydrateStorefrontState() {
   listeners.forEach((listener) => listener());
 }
 
+export async function hydrateCustomerData() {
+  ensureLoaded();
+  const authUser = getStoredAuthUser();
+  if (!authUser || authUser.role !== "customer") return;
+
+  const response = await fetchCustomerData();
+  db = {
+    ...db,
+    orders: response.data.orders,
+    payments: response.data.payments,
+    logs: response.data.logs,
+    refunds: response.data.refunds,
+    notifications: response.data.notifications,
+  };
+  (["orders", "payments", "logs", "refunds", "notifications"] as const).forEach((key) =>
+    setStoredData(key, db[key]),
+  );
+  listeners.forEach((listener) => listener());
+}
+
 export function resetDemoData() {
   const session = db.session;
   if (hasLS()) localStorage.removeItem(INIT_KEY);
   if (hasLS()) localStorage.removeItem(MLBB_ONLY_KEY);
+  if (hasLS()) localStorage.removeItem(DYNAMIC_DATA_KEY);
   loaded = false;
   ensureLoaded();
   updateStoredData(() => ({ session }));

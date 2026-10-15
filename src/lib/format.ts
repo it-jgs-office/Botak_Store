@@ -18,12 +18,12 @@ export type Tone = "neutral" | "primary" | "info" | "success" | "warning" | "dan
 
 export const ORDER_STATUS_META: Record<OrderStatus, { label: string; tone: Tone }> = {
   waiting_payment: { label: "Menunggu Pembayaran", tone: "warning" },
-  waiting_assignment: { label: "Menunggu Penjoki", tone: "info" },
-  waiting_confirmation: { label: "Menunggu Konfirmasi", tone: "info" },
-  assigned: { label: "Ditugaskan", tone: "primary" },
-  in_progress: { label: "Sedang Dikerjakan", tone: "primary" },
-  on_hold: { label: "Ditunda", tone: "warning" },
-  pending_verification: { label: "Verifikasi Hasil", tone: "info" },
+  waiting_assignment: { label: "Diproses", tone: "primary" },
+  waiting_confirmation: { label: "Diproses", tone: "primary" },
+  assigned: { label: "Diproses", tone: "primary" },
+  in_progress: { label: "Diproses", tone: "primary" },
+  on_hold: { label: "Diproses", tone: "primary" },
+  pending_verification: { label: "Diproses", tone: "primary" },
   completed: { label: "Selesai", tone: "success" },
   cancelled: { label: "Dibatalkan", tone: "danger" },
 };

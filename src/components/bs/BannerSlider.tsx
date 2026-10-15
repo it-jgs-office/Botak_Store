@@ -11,6 +11,7 @@ const HEIGHTS: Record<BannerVariant, string> = {
 
 export function BannerSlider({ variant = "full" }: { variant?: BannerVariant }) {
   const db = useDB();
+  const storeName = db.settings.storeName?.trim() || "BotakStore";
   const slides = useMemo(
     () => db.banners.filter((slide) => slide.active).sort((a, b) => a.sortOrder - b.sortOrder),
     [db.banners],
@@ -43,7 +44,7 @@ export function BannerSlider({ variant = "full" }: { variant?: BannerVariant }) 
   return (
     <section
       className={`group relative isolate w-full overflow-hidden rounded-2xl border border-[#d8ad24]/60 bg-[#081126] shadow-[0_16px_40px_-24px_rgba(2,8,23,.85)] sm:rounded-[1.75rem] ${HEIGHTS[variant]}`}
-      aria-label="Banner BotakStore"
+      aria-label={`Banner ${storeName}`}
       aria-roledescription="carousel"
     >
       <div
@@ -74,7 +75,7 @@ export function BannerSlider({ variant = "full" }: { variant?: BannerVariant }) 
                 <div className="pointer-events-none absolute right-[6%] top-0 h-px w-[38%] bg-gradient-to-r from-transparent via-[#ffd447]/80 to-transparent" />
                 <div className="relative z-10 max-w-[56%]">
                   <p className="inline-flex rounded-full border border-[#ffd447]/35 bg-[#ffd447]/10 px-2 py-1 text-[clamp(.48rem,.85vw,.8rem)] font-black uppercase tracking-[.2em] text-[#ffd447] sm:px-3">
-                    BotakStore
+                    {storeName}
                   </p>
                   <h2 className="mt-[3%] text-[clamp(1.05rem,3.5vw,3.75rem)] font-black leading-[.96] tracking-tight">
                     {slide.title}

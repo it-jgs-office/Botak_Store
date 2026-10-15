@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Banknote,
@@ -23,6 +23,7 @@ import {
   type MobileLegendsAccount,
 } from "@/lib/api";
 import { recordPakasirOrder } from "@/lib/actions";
+import { quoteCoupon } from "@/lib/coupon";
 import { useDB } from "@/lib/store";
 import { ACTIVE_PAKASIR_PAYMENT_METHODS, type PakasirMethod } from "@/lib/pakasir";
 import { TOPUP_GAMES, type TopupPack } from "@/lib/topup-mock";
@@ -68,6 +69,7 @@ export function TopupTab({ gameSlug }: { gameSlug?: string }) {
   const [paymentId, setPaymentId] = useState<PakasirMethod>("qris");
   const [whatsapp, setWhatsapp] = useState("");
   const [email, setEmail] = useState("");
+  const [couponCode, setCouponCode] = useState("");
   const [account, setAccount] = useState<MobileLegendsAccount | null>(null);
   const [accountError, setAccountError] = useState("");
   const [checkingAccount, setCheckingAccount] = useState(false);
@@ -175,8 +177,13 @@ export function TopupTab({ gameSlug }: { gameSlug?: string }) {
   const paymentMethods = ACTIVE_PAKASIR_PAYMENT_METHODS;
   const selectedPayment = paymentMethods.find((item) => item.id === paymentId);
   const subtotal = selectedPack?.price ?? 0;
+  const couponQuote = useMemo(
+    () => quoteCoupon(db.coupons, couponCode, subtotal),
+    [couponCode, db.coupons, subtotal],
+  );
+  const discount = couponQuote.discount;
   const paymentFee = 0;
-  const total = subtotal + paymentFee;
+  const total = Math.max(0, subtotal - discount + paymentFee);
   const normalizedUserId = userId.trim();
   const normalizedServerId = serverId.trim();
   const accountComplete = !!account
@@ -185,6 +192,10 @@ export function TopupTab({ gameSlug }: { gameSlug?: string }) {
   const valid = accountComplete && !!selectedPack && !!paymentId && whatsapp.trim().length >= 8;
 
   const submit = async () => {
+    if (db.settings.maintenance) {
+      toast.error("Toko sedang dalam pemeliharaan. Transaksi baru sementara ditutup.");
+      return;
+    }
     if (!accountComplete) {
       setAccountAttention(false);
       window.requestAnimationFrame(() => setAccountAttention(true));
@@ -203,6 +214,10 @@ export function TopupTab({ gameSlug }: { gameSlug?: string }) {
       toast.error("Lengkapi data akun, nominal, pembayaran, dan nomor WhatsApp.");
       return;
     }
+    if (couponCode.trim() && couponQuote.error) {
+      toast.error(couponQuote.error);
+      return;
+    }
 
     if (!selectedPack || !account) return;
 
@@ -212,7 +227,8 @@ export function TopupTab({ gameSlug }: { gameSlug?: string }) {
         order_type: "topup",
         item_id: selectedPack.id,
         description: `Top Up Mobile Legends - ${selectedPack.label}`,
-        amount: total,
+        amount: subtotal,
+        coupon_code: couponQuote.coupon?.code,
         payment_method: paymentId,
         customer: {
           whatsapp: whatsapp.trim(),
@@ -221,7 +237,6 @@ export function TopupTab({ gameSlug }: { gameSlug?: string }) {
           server_id: normalizedServerId,
           username: account.username,
           country: account.country,
-          customer_id: db.session?.role === "customer" ? db.session.userId : undefined,
           customer_name: account.username,
           game_id: catalogGame?.id ?? "g-mlbb",
           game_name: game?.name ?? "Mobile Legends",
@@ -231,6 +246,9 @@ export function TopupTab({ gameSlug }: { gameSlug?: string }) {
         orderId: payment.order_id,
         transactionId: payment.txn_id,
         amount: payment.total_payment ?? total,
+        baseAmount: payment.base_amount ?? subtotal,
+        discount: payment.discount ?? discount,
+        couponCode: payment.coupon_code ?? undefined,
         method: payment.payment_method,
         game: { id: catalogGame?.id ?? "g-mlbb", name: game?.name ?? "Mobile Legends" },
         service: { id: selectedPack.id, name: `Top Up ${selectedPack.label}` },
@@ -548,11 +566,35 @@ export function TopupTab({ gameSlug }: { gameSlug?: string }) {
                   </button>
                 ))}
               </div>
+              <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-[#ecd46e] bg-[#fffbed] px-3 py-2.5 text-xs leading-5 text-[#715700]">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                <span><strong className="font-black">Mode uji coba pembayaran.</strong> Pembayaran belum diproses secara riil.</span>
+              </div>
             </Step>
           </div>
 
           <Step
             number="4"
+            title="Voucher"
+            description="Masukkan kode promo jika kamu punya."
+          >
+            <Field label="Kode voucher">
+              <Input
+                value={couponCode}
+                onChange={(event) => setCouponCode(event.target.value.toUpperCase().replace(/\s/g, ""))}
+                placeholder="Contoh: PROMO26"
+                className="h-11 rounded-2xl border-[#dce3ec] bg-[#f8fafc] font-black uppercase text-base sm:h-12 sm:text-sm"
+              />
+            </Field>
+            {couponCode.trim() && (
+              <p className={`mt-2 text-xs font-bold ${couponQuote.error ? "text-red-600" : "text-emerald-700"}`}>
+                {couponQuote.error ?? `Voucher ${couponQuote.coupon?.code} digunakan: hemat ${rupiah(discount)}.`}
+              </p>
+            )}
+          </Step>
+
+          <Step
+            number="5"
             title="Kontak"
             description="Nomor WhatsApp untuk info & bukti pesanan."
           >
@@ -604,6 +646,7 @@ export function TopupTab({ gameSlug }: { gameSlug?: string }) {
             </div>
             <SummaryRow label="Pembayaran" value={selectedPayment?.name ?? "Belum dipilih"} />
             <SummaryRow label="Subtotal" value={rupiah(subtotal)} />
+            {discount > 0 && <SummaryRow label={`Diskon (${couponQuote.coupon?.code})`} value={`-${rupiah(discount)}`} />}
             <SummaryRow
               label="Biaya admin"
               value={selectedPayment ? rupiah(paymentFee) : "—"}
@@ -616,7 +659,7 @@ export function TopupTab({ gameSlug }: { gameSlug?: string }) {
               type="button"
               size="lg"
               onClick={submit}
-              disabled={creatingPayment}
+              disabled={creatingPayment || db.settings.maintenance}
               className="mt-5 w-full bg-[#ffd84d] font-black text-[#17191d] hover:bg-[#f2c425]"
             >
               {creatingPayment ? <LoaderCircle className="animate-spin" /> : <Banknote />}
@@ -642,7 +685,7 @@ export function TopupTab({ gameSlug }: { gameSlug?: string }) {
           <Button
             type="button"
             onClick={submit}
-            disabled={creatingPayment || !valid}
+            disabled={creatingPayment || !valid || db.settings.maintenance}
             className="h-10 shrink-0 bg-[#ffd84d] px-4 text-sm font-black text-[#17191d] hover:bg-[#f2c425] disabled:opacity-50"
           >
             {creatingPayment ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Banknote className="h-4 w-4" />}

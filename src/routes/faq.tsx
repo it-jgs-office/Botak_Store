@@ -15,11 +15,12 @@ export const Route = createFileRoute("/faq")({
 });
 
 const FAQS = [
-  { q: "Apakah akun saya aman?", a: "Aman. Kami tidak pernah meminta password di halaman order. Admin akan menghubungi kamu via WhatsApp untuk format login yang aman, dan akun dikembalikan setelah pengerjaan selesai." },
-  { q: "Berapa lama pengerjaan joki?", a: "Estimasi tertera di setiap layanan. Untuk joki rank umumnya 1–3 hari tergantung selisih rank. Kamu bisa memantau progres lewat halaman Cek Pesanan." },
-  { q: "Bagaimana cara membayar?", a: "Kami mendukung QRIS, e-wallet, dan virtual account. Pembayaran dilakukan setelah pesanan dibuat, melalui halaman cek pesanan." },
-  { q: "Bisakah request hero tertentu?", a: "Bisa. Tulis request hero atau role di kolom catatan saat memesan, dan jokier akan mengusahakannya." },
-  { q: "Bagaimana jika hasil tidak sesuai?", a: "Ajukan refund. Admin akan meninjau dan memproses sesuai kebijakan pengembalian dana." },
+  { q: "Layanan joki game apa yang tersedia?", a: "Saat ini layanan joki yang aktif hanya Mobile Legends. Valorant, PUBG Mobile, dan eFootball masih dalam tahap maintenance." },
+  { q: "Apakah akun Mobile Legends saya aman?", a: "Data akun hanya digunakan untuk pengerjaan pesanan. Jangan login selama proses berlangsung dan segera ganti kata sandi setelah pesanan selesai." },
+  { q: "Berapa lama pengerjaan joki?", a: "Estimasi mengikuti paket yang dipilih dan dapat dipantau menggunakan nomor pesanan pada halaman Cek Pesanan." },
+  { q: "Bagaimana cara membayar?", a: "Pilih QRIS atau virtual account pada checkout. Invoice dan instruksi pembayaran langsung tampil setelah pesanan dibuat." },
+  { q: "Bagaimana cara melihat status pesanan?", a: "Masukkan nomor pesanan pada halaman Cek Pesanan atau buka Riwayat Transaksi di halaman profil setelah login." },
+  { q: "Pembayaran sudah berhasil tetapi status belum berubah?", a: "Tunggu pembaruan otomatis beberapa saat. Jika status tetap sama, hubungi CS dengan nomor pesanan dan bukti pembayaran." },
 ];
 
 function FaqPage() {

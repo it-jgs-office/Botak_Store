@@ -9,36 +9,36 @@ import { useDB } from "@/lib/store";
 
 const FAQS = [
   {
-    q: "Apakah akun saya aman?",
-    a: "Penjoki bermain manual tanpa cheat atau tools pihak ketiga. Data pesanan dipakai untuk proses layanan.",
+    q: "Layanan joki game apa yang tersedia?",
+    a: "Saat ini layanan joki yang aktif hanya Mobile Legends. Valorant, PUBG Mobile, dan eFootball masih maintenance.",
   },
   {
     q: "Berapa lama proses joki?",
-    a: "Estimasi tampil di setiap paket. Pesanan kecil biasanya mulai dikerjakan dalam hitungan menit.",
+    a: "Estimasi tampil pada setiap paket Mobile Legends dan progres dapat dipantau menggunakan nomor pesanan.",
   },
   {
     q: "Metode pembayaran apa saja yang tersedia?",
-    a: "Pembayaran dapat dilakukan melalui QRIS, e-wallet, dan virtual account yang tersedia saat checkout.",
+    a: "Pembayaran tersedia melalui QRIS dan virtual account Pakasir yang tampil langsung pada halaman invoice.",
   },
   {
     q: "Apakah bisa request hero atau role tertentu?",
-    a: "Bisa. Tulis hero, role, atau gaya bermain yang diinginkan pada catatan pesanan agar diteruskan ke penjoki.",
+    a: "Bisa. Tulis hero, role, atau kebutuhan lain pada catatan pesanan sebelum melakukan pembayaran.",
   },
   {
     q: "Bagaimana cara memantau progres pesanan?",
-    a: "Gunakan tab Cek Pesanan dengan nomor order kamu. Admin juga akan menghubungi melalui WhatsApp bila ada pembaruan penting.",
+    a: "Gunakan halaman Cek Pesanan dengan nomor order kamu atau buka Riwayat Transaksi pada halaman profil.",
   },
   {
     q: "Apakah boleh login ke akun saat pengerjaan berlangsung?",
-    a: "Sebaiknya jangan login saat pengerjaan agar progres tidak terganggu. Kamu akan diberi kabar ketika pesanan sudah selesai atau membutuhkan konfirmasi.",
+    a: "Jangan login selama pengerjaan agar progres tidak terganggu. Pantau perubahan status melalui halaman profil atau Cek Pesanan.",
   },
   {
     q: "Bisakah pesanan dibatalkan?",
-    a: "Pesanan yang belum dikerjakan dapat diajukan pembatalan melalui CS. Pesanan yang sudah berjalan akan ditinjau terlebih dahulu sesuai progresnya.",
+    a: "Hubungi CS dengan nomor pesanan. Pembatalan akan ditinjau berdasarkan status pembayaran dan progres pengerjaan.",
   },
   {
     q: "Bagaimana jika target tidak tercapai?",
-    a: "Hubungi CS dari halaman cek pesanan. Tim kami membantu meninjau progres dan opsi penyelesaiannya.",
+    a: "Hubungi CS melalui WhatsApp dengan nomor pesanan agar progres dan opsi penyelesaiannya dapat diperiksa.",
   },
 ];
 

@@ -20,6 +20,14 @@ export interface AdminCustomer {
   phone: string;
   role: "customer";
   createdAt: string | null;
+  profileExtras: {
+    avatar: string | null;
+    gameNickname: string;
+    gameUserId: string;
+    gameServerId: string;
+    notifOrder: boolean;
+    notifPromo: boolean;
+  };
 }
 
 export interface MobileLegendsAccount {
@@ -50,6 +58,9 @@ export interface PakasirPayment {
   va_number?: string | null;
   payment_url?: string;
   is_sandbox: boolean;
+  base_amount?: number;
+  discount?: number;
+  coupon_code?: string | null;
 }
 
 export interface PakasirInvoice extends PakasirPayment {
@@ -79,17 +90,25 @@ export interface PublicOrder {
   createdAt: string;
 }
 
+export interface CustomerData {
+  orders: import("./types").Order[];
+  payments: import("./types").Payment[];
+  logs: import("./types").OrderProgressLog[];
+  refunds: import("./types").Refund[];
+  notifications: import("./types").Notification[];
+}
+
 export interface CreatePakasirPaymentInput {
   order_type: "topup" | "joki";
   item_id: string;
   description: string;
   amount: number;
+  coupon_code?: string;
   payment_method: string;
   customer: Record<string, string | number | undefined>;
 }
 
 interface AuthResponse {
-  access_token: string;
   token_type: "Bearer";
   expires_in: number;
   user: ApiUser;
@@ -110,7 +129,7 @@ function storage() {
 }
 
 export function getJwtToken() {
-  return storage()?.getItem(TOKEN_KEY) ?? null;
+  return getStoredAuthUser() ? "cookie-session" : null;
 }
 
 export function getStoredAuthUser(): ApiUser | null {
@@ -129,16 +148,15 @@ export function clearApiSession() {
 }
 
 async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = getJwtToken();
   const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
+      credentials: "include",
       headers: {
         Accept: "application/json",
         ...(init.body && !isFormData ? { "Content-Type": "application/json" } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...init.headers,
       },
     });
@@ -166,7 +184,7 @@ async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 function persistAuth(response: AuthResponse) {
-  storage()?.setItem(TOKEN_KEY, response.access_token);
+  storage()?.removeItem(TOKEN_KEY);
   storage()?.setItem(AUTH_USER_KEY, JSON.stringify(response.user));
   return response;
 }
@@ -205,7 +223,7 @@ export async function apiMe() {
 }
 
 export async function apiLogout() {
-  if (getJwtToken()) {
+  if (getStoredAuthUser()) {
     await apiRequest<{ message: string }>("/auth/logout", { method: "POST" }).catch(() => null);
   }
   clearApiSession();
@@ -241,6 +259,10 @@ export async function fetchAdminState<T>() {
   return apiRequest<{ data: T | null; updated_at: string | null }>("/admin/state");
 }
 
+export async function fetchAdminOperations<T>() {
+  return apiRequest<{ data: T | null; updated_at: string | null }>("/admin/operations");
+}
+
 export async function fetchAdminCustomers() {
   return apiRequest<{ data: AdminCustomer[] }>("/admin/customers");
 }
@@ -253,8 +275,34 @@ export async function fetchPublicOrder(orderId: string) {
   return apiRequest<{ data: PublicOrder }>(`/orders/${encodeURIComponent(orderId)}`);
 }
 
+export async function fetchRecentOrders() {
+  return apiRequest<{ data: PublicOrder[] }>("/store/orders/recent");
+}
+
+export async function fetchCustomerData() {
+  return apiRequest<{ data: CustomerData }>("/auth/data");
+}
+
+export async function fetchProfileExtras<T>() {
+  return apiRequest<{ data: T }>("/auth/profile-extras");
+}
+
+export async function updateProfileExtras<T>(data: T) {
+  return apiRequest<{ data: T }>("/auth/profile-extras", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
 export async function saveAdminState<T>(data: T) {
   return apiRequest<{ message: string; updated_at: string }>("/admin/state", {
+    method: "PUT",
+    body: JSON.stringify({ data }),
+  });
+}
+
+export async function saveAdminOperations<T>(data: T) {
+  return apiRequest<{ message: string; updated_at: string }>("/admin/operations", {
     method: "PUT",
     body: JSON.stringify({ data }),
   });
@@ -312,4 +360,11 @@ export async function fetchPakasirInvoice(orderId: string, refresh = false) {
     `/payments/pakasir/${encodeURIComponent(orderId)}${suffix}`,
   );
   return response.data;
+}
+
+export async function simulatePakasirPayment(orderId: string) {
+  return apiRequest<{ message: string }>(
+    `/payments/pakasir/${encodeURIComponent(orderId)}/simulate`,
+    { method: "POST" },
+  );
 }

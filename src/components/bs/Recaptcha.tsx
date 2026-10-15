@@ -21,12 +21,19 @@ export const CaptchaCheckbox = forwardRef<ReCAPTCHA, CaptchaCheckboxProps>(
       );
     }
     return (
-      <div className="flex justify-start">
+      <div
+        className={`flex w-full max-w-[324px] items-center justify-center rounded-2xl border p-2.5 shadow-[0_8px_24px_-18px_rgba(16,20,25,.6)] transition focus-within:ring-2 focus-within:ring-[#ffd84d]/60 sm:justify-start ${
+          theme === "dark"
+            ? "border-[#303b4b] bg-[#151d28]"
+            : "border-[#e1e6ed] bg-[#f8fafc]"
+        }`}
+        aria-label="Verifikasi keamanan"
+      >
         <ReCAPTCHA
           ref={ref}
           sitekey={RECAPTCHA_SITE_KEY}
           theme={theme}
-          size="compact"
+          size="normal"
           onChange={onVerify}
         />
       </div>
